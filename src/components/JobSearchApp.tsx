@@ -41,7 +41,7 @@ function timeAgo(value: string | null): string {
 }
 
 export function JobSearchApp() {
-  const [query, setQuery] = useState("software engineer");
+  const [query, setQuery] = useState("SEO");
   const [location, setLocation] = useState("remote");
   const [remoteOnly, setRemoteOnly] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -49,27 +49,18 @@ export function JobSearchApp() {
   const [result, setResult] = useState<SearchResponse | null>(null);
   const [status, setStatus] = useState<StatusPayload | null>(null);
 
-  useEffect(() => {
-    fetch("/api/status")
-      .then((res) => res.json())
-      .then((data: StatusPayload) => {
-        setStatus(data);
-        setQuery(data.search.query);
-        setLocation(data.search.location);
-        setRemoteOnly(data.search.remoteOnly);
-      })
-      .catch(() => undefined);
-  }, []);
-
-  async function runSearch(event?: React.FormEvent) {
-    event?.preventDefault();
+  async function runSearchWith(
+    nextQuery: string,
+    nextLocation: string,
+    nextRemote: boolean
+  ) {
     setLoading(true);
     setError("");
     try {
       const params = new URLSearchParams({
-        query,
-        location,
-        remoteOnly: String(remoteOnly),
+        query: nextQuery,
+        location: nextLocation,
+        remoteOnly: String(nextRemote),
       });
       const response = await fetch(`/api/search?${params.toString()}`);
       if (!response.ok) {
@@ -81,6 +72,29 @@ export function JobSearchApp() {
     } finally {
       setLoading(false);
     }
+  }
+
+  useEffect(() => {
+    fetch("/api/status")
+      .then((res) => res.json())
+      .then((data: StatusPayload) => {
+        setStatus(data);
+        const nextQuery = data.search.query || "SEO";
+        const nextLocation = data.search.location || "remote";
+        const nextRemote = data.search.remoteOnly;
+        setQuery(nextQuery);
+        setLocation(nextLocation);
+        setRemoteOnly(nextRemote);
+        void runSearchWith(nextQuery, nextLocation, nextRemote);
+      })
+      .catch(() => {
+        void runSearchWith("SEO", "remote", true);
+      });
+  }, []);
+
+  async function runSearch(event?: React.FormEvent) {
+    event?.preventDefault();
+    await runSearchWith(query, location, remoteOnly);
   }
 
   const sourceRows = useMemo(() => {
@@ -96,11 +110,11 @@ export function JobSearchApp() {
         <div>
           <p className="text-sm tracking-[0.2em] text-[#3ee0a2]">JOB SEARCH BOT</p>
           <h1 className="mt-1 text-4xl font-semibold tracking-tight">
-            Find openings as they appear
+            Find SEO jobs
           </h1>
           <p className="mt-2 max-w-2xl text-[#93a4bb]">
-            Searches Remotive, Arbeitnow, Jobicy, Himalayas, and Remote OK.
-            Daily Vercel cron can Slack, Discord, or email you new roles.
+            Simple search for SEO roles from Remotive, Arbeitnow, Jobicy,
+            Himalayas, and Remote OK.
           </p>
         </div>
         <div className="rounded-2xl border border-[#1d3557] bg-[#0d1b2e] px-4 py-3 text-sm text-[#93a4bb]">
@@ -119,7 +133,7 @@ export function JobSearchApp() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             className="rounded-xl border border-[#1d3557] bg-[#07111f] px-3 py-2 outline-none focus:border-[#3ee0a2]"
-            placeholder="seo specialist, next.js, product designer"
+            placeholder="SEO, SEO specialist, content SEO"
           />
         </label>
         <label className="flex flex-col gap-1 text-sm">

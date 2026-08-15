@@ -11,6 +11,13 @@ function includesQuery(haystack: string, query: string): boolean {
   const q = normalize(query);
   if (!q) return true;
   const text = normalize(haystack);
+  if (q === "seo") {
+    return (
+      text.includes("seo") ||
+      text.includes("search engine optimization") ||
+      text.includes("search engine optimisation")
+    );
+  }
   return q.split(/\s+/).every((part) => text.includes(part));
 }
 
@@ -264,7 +271,7 @@ async function fromAdzuna(input: SearchInput): Promise<Job[]> {
   url.searchParams.set("app_id", appId);
   url.searchParams.set("app_key", appKey);
   url.searchParams.set("results_per_page", "30");
-  url.searchParams.set("what", input.query || "software");
+  url.searchParams.set("what", input.query || "SEO");
   if (input.location) url.searchParams.set("where", input.location);
   if (input.remoteOnly) url.searchParams.set("what_and", "remote");
   const result = await fetchJson<{ results?: AdzunaJob[] }>(url.toString());
@@ -337,9 +344,15 @@ export async function searchJobs(input: SearchInput): Promise<SearchResult> {
   };
 }
 
+function seoDefaultQuery(): string {
+  const fromEnv = process.env.JOB_QUERY?.trim();
+  if (!fromEnv || fromEnv.toLowerCase() === "software engineer") return "SEO";
+  return fromEnv;
+}
+
 export function defaultSearchInput(): SearchInput {
   return {
-    query: process.env.JOB_QUERY?.trim() || "software engineer",
+    query: seoDefaultQuery(),
     location: process.env.JOB_LOCATION?.trim() || "remote",
     remoteOnly: (process.env.JOB_REMOTE_ONLY ?? "true").toLowerCase() !== "false",
   };

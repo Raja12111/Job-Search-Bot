@@ -1,6 +1,8 @@
 # Job Search Bot
 
-Finds new job openings from public boards and can ping you every morning via Slack, Discord, or email.
+Finds SEO job openings from public boards and can ping you every morning via Slack, Discord, or email.
+
+Default search: **SEO** + remote.
 
 Live sources (no API key):
 
