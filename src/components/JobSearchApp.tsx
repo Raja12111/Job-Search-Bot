@@ -27,6 +27,7 @@ const SOURCE_LABEL: Record<JobSource, string> = {
   himalayas: "Himalayas",
   remoteok: "Remote OK",
   adzuna: "Adzuna",
+  muse: "The Muse",
 };
 
 function timeAgo(value: string | null): string {
@@ -105,7 +106,7 @@ export function JobSearchApp() {
   }, [result]);
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-8 px-5 py-10">
+    <main className="flex flex-col gap-8">
       <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm tracking-[0.2em] text-[#3ee0a2]">JOB SEARCH BOT</p>

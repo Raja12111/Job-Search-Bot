@@ -28,9 +28,18 @@ function isSeoRole(job: Job): boolean {
   return tags.length > 0 && tags.length <= 3 && tags.includes("seo");
 }
 
+function isMarketingRole(job: Job): boolean {
+  const title = normalize(job.title);
+  return /\b(marketing|digital marketing|content marketing|growth marketing|performance marketing|ppc|sem|social media|paid media)\b/.test(
+    title
+  );
+}
+
 function jobMatches(job: Job, input: SearchInput): boolean {
   const query = normalize(input.query);
-  if (query === "seo") {
+  if (input.cityScan || query === "seo marketing" || query === "seo and marketing") {
+    if (!isSeoRole(job) && !isMarketingRole(job)) return false;
+  } else if (query === "seo") {
     if (!isSeoRole(job)) return false;
   } else {
     const blob = `${job.title} ${job.company} ${job.location} ${job.tags.join(" ")} ${job.description}`;
@@ -38,10 +47,14 @@ function jobMatches(job: Job, input: SearchInput): boolean {
   }
   if (input.remoteOnly && !job.remote) return false;
   if (input.location) {
-    const loc = normalize(input.location);
+    const loc = normalize(input.location).split(",")[0]?.trim() ?? "";
     const jobLoc = normalize(job.location);
     const isRemoteQuery = loc === "remote" || loc === "worldwide";
-    if (!isRemoteQuery && !jobLoc.includes(loc) && !job.remote) return false;
+    if (input.cityScan) {
+      if (!loc || !jobLoc.includes(loc)) return false;
+    } else if (!isRemoteQuery && !jobLoc.includes(loc) && !job.remote) {
+      return false;
+    }
   }
   if (input.maxAgeHours && job.postedAt) {
     const posted = Date.parse(job.postedAt);
@@ -272,19 +285,58 @@ type AdzunaJob = {
   description?: string;
 };
 
+type MuseJob = {
+  id?: number;
+  name?: string;
+  publication_date?: string;
+  contents?: string;
+  refs?: { landing_page?: string };
+  locations?: Array<{ name?: string }>;
+  categories?: Array<{ name?: string }>;
+  company?: { name?: string };
+};
+
+async function fromMuse(input: SearchInput): Promise<Job[]> {
+  const url = new URL("https://www.themuse.com/api/public/jobs");
+  url.searchParams.set("page", "0");
+  url.searchParams.set("descending", "true");
+  if (input.location && !["remote", "worldwide"].includes(normalize(input.location))) {
+    url.searchParams.set("location", input.location);
+  }
+  url.searchParams.append("category", "Marketing");
+  url.searchParams.append("category", "Advertising and PR");
+  const result = await fetchJson<{ results?: MuseJob[] }>(url.toString());
+  if (!result.ok) throw new Error(result.error);
+  return (result.data.results ?? []).map((item) => ({
+    id: `muse-${item.id ?? item.refs?.landing_page ?? item.name}`,
+    title: asString(item.name) || "Untitled role",
+    company: asString(item.company?.name) || "Unknown company",
+    location: asString(item.locations?.[0]?.name) || input.location || "Unknown",
+    remote: /remote/i.test(asString(item.locations?.[0]?.name)),
+    url: asString(item.refs?.landing_page),
+    source: "muse",
+    postedAt: isoFromUnknown(item.publication_date),
+    description: asString(item.contents).replace(/<[^>]+>/g, " ").slice(0, 400),
+    tags: (item.categories ?? []).map((cat) => asString(cat.name)).filter(Boolean),
+  }));
+}
+
 async function fromAdzuna(input: SearchInput): Promise<Job[]> {
   const appId = process.env.ADZUNA_APP_ID?.trim();
   const appKey = process.env.ADZUNA_APP_KEY?.trim();
   if (!appId || !appKey) {
     throw new Error("ADZUNA_APP_ID / ADZUNA_APP_KEY not set");
   }
-  const country = (process.env.ADZUNA_COUNTRY?.trim() || "us").toLowerCase();
+  const country = (input.country || process.env.ADZUNA_COUNTRY?.trim() || "us").toLowerCase();
   const url = new URL(`https://api.adzuna.com/v1/api/jobs/${country}/search/1`);
   url.searchParams.set("app_id", appId);
   url.searchParams.set("app_key", appKey);
-  url.searchParams.set("results_per_page", "30");
-  url.searchParams.set("what", input.query || "SEO");
-  if (input.location) url.searchParams.set("where", input.location);
+  url.searchParams.set("results_per_page", "50");
+  url.searchParams.set("what", input.cityScan ? "SEO marketing" : input.query || "SEO");
+  if (input.location) url.searchParams.set("where", input.location.split(",")[0] ?? input.location);
+  if (input.maxAgeHours) {
+    url.searchParams.set("max_days_old", String(Math.max(1, Math.ceil(input.maxAgeHours / 24))));
+  }
   if (input.remoteOnly) url.searchParams.set("what_and", "remote");
   const result = await fetchJson<{ results?: AdzunaJob[] }>(url.toString());
   if (!result.ok) throw new Error(result.error);
@@ -314,22 +366,29 @@ const SOURCE_FETCHERS: Array<{
   { source: "jobicy", run: (input) => fromJobicy(input.query) },
   { source: "himalayas", run: () => fromHimalayas() },
   { source: "remoteok", run: () => fromRemoteOk() },
+  { source: "muse", run: (input) => fromMuse(input) },
   { source: "adzuna", run: (input) => fromAdzuna(input), optional: true },
 ];
 
 export async function searchJobs(input: SearchInput): Promise<SearchResult> {
   const sources: SearchResult["sources"] = {};
   const collected: Job[] = [];
+  const fetchers = input.cityScan
+    ? SOURCE_FETCHERS.filter((entry) =>
+        ["muse", "adzuna", "arbeitnow", "jobicy"].includes(entry.source)
+      )
+    : SOURCE_FETCHERS;
 
   const settled = await Promise.allSettled(
-    SOURCE_FETCHERS.map(async (entry) => {
+    fetchers.map(async (entry) => {
       const jobs = await entry.run(input);
       return { entry, jobs };
     })
   );
 
   for (const [index, item] of settled.entries()) {
-    const meta = SOURCE_FETCHERS[index];
+    const meta = fetchers[index];
+    if (!meta) continue;
     if (item.status === "fulfilled") {
       const matched = item.value.jobs.filter((job) => jobMatches(job, input) && job.url);
       sources[meta.source] = { ok: true, count: matched.length };

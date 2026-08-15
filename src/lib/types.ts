@@ -4,7 +4,8 @@ export type JobSource =
   | "jobicy"
   | "himalayas"
   | "remoteok"
-  | "adzuna";
+  | "adzuna"
+  | "muse";
 
 export type Job = {
   id: string;
@@ -24,6 +25,22 @@ export type SearchInput = {
   location: string;
   remoteOnly: boolean;
   maxAgeHours?: number;
+  cityScan?: boolean;
+  country?: "us" | "gb";
+};
+
+export type CityRow = {
+  city: string;
+  state: string;
+  country: "us" | "gb";
+};
+
+export type FirmHit = {
+  company: string;
+  city: string;
+  country: "us" | "gb";
+  agencyLike: boolean;
+  jobs: Job[];
 };
 
 export type SearchResult = {

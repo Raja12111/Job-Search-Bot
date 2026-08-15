@@ -1,5 +1,5 @@
-import { JobSearchApp } from "@/components/JobSearchApp";
+import { AppHome } from "@/components/AppHome";
 
 export default function HomePage() {
-  return <JobSearchApp />;
+  return <AppHome />;
 }
