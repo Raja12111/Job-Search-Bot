@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { mapsSearchConfigured } from "@/lib/discover-firms";
 import { defaultSearchInput } from "@/lib/jobs";
 import { configuredChannels } from "@/lib/notify";
 
@@ -12,6 +13,9 @@ export async function GET() {
       schedule: "0 8 * * *",
       timezone: "UTC",
     },
-    integrations: channels,
+    integrations: {
+      ...channels,
+      googleMaps: mapsSearchConfigured(),
+    },
   });
 }

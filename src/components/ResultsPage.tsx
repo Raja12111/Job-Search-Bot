@@ -22,6 +22,7 @@ export function ResultsPage() {
         City: row.city,
         State: row.country === "us" ? row.state ?? "" : "",
         Firm: row.company,
+        Address: row.address ?? "",
         Website: row.website,
         Crawled: row.crawled ? "Yes" : "No",
         CareerPages: row.careerPages.join(" | "),
@@ -98,6 +99,19 @@ export function ResultsPage() {
                   <td className="px-3 py-2 text-[#93a4bb]">{row.locationLabel}</td>
                   <td className="px-3 py-2">
                     <div>{row.company}</div>
+                    {row.address ? (
+                      <div className="text-xs text-[#93a4bb]">{row.address}</div>
+                    ) : null}
+                    {row.mapsUrl ? (
+                      <a
+                        className="mr-2 text-xs text-[#7aa2ff] underline"
+                        href={row.mapsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        GMB
+                      </a>
+                    ) : null}
                     {row.website ? (
                       <a
                         className="text-xs text-[#7aa2ff] underline"

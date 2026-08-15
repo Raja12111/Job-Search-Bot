@@ -24,7 +24,7 @@ export async function GET(request: Request) {
     firms,
     note:
       firms.length === 0
-        ? "No SEO firms found. Add SERPER_API_KEY on Vercel for stronger city search."
+        ? "No GMB SEO firms found. Add SERPER_API_KEY or GOOGLE_PLACES_API_KEY on Vercel."
         : undefined,
   });
 }

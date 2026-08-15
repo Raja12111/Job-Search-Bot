@@ -23,11 +23,8 @@ const SKIP_HOSTS = [
   "microsoft.com",
   "duckduckgo.com",
   "clutch.co",
-  "sortlist.com",
-  "designrush.com",
   "upwork.com",
   "fiverr.com",
-  "mozilla.org",
 ];
 
 function hostOf(url: string): string {
@@ -44,23 +41,146 @@ function keepWebsite(url: string): boolean {
   return !SKIP_HOSTS.some((skip) => host.includes(skip));
 }
 
+function cleanWebsite(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return null;
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    const origin = `${new URL(withProtocol).origin}/`;
+    return keepWebsite(origin) ? origin : null;
+  } catch {
+    return null;
+  }
+}
+
 function nameFromHost(url: string): string {
   const host = hostOf(url);
   const base = host.split(".")[0] ?? host;
   return base.replace(/[-_]/g, " ").replace(/\b\w/g, (ch) => ch.toUpperCase());
 }
 
-function looksLikeSeoFirm(name: string, domain: string, city: string): boolean {
-  const blob = `${name} ${domain}`.toLowerCase();
-  const cityPart = city.toLowerCase().replace(/[^a-z0-9]/g, "");
-  return (
-    blob.includes("seo") ||
-    blob.includes("search engine") ||
-    (cityPart.length > 3 && blob.includes(cityPart))
-  );
+function addFirm(map: Map<string, DiscoveredFirm>, firm: DiscoveredFirm): void {
+  const website = cleanWebsite(firm.website);
+  if (!website) return;
+  if (map.has(website)) return;
+  map.set(website, { ...firm, website });
 }
 
-async function searchClearbit(query: string, city: string): Promise<DiscoveredFirm[]> {
+type SerperPlace = {
+  title?: string;
+  address?: string;
+  website?: string;
+  cid?: string;
+  placeId?: string;
+};
+
+async function searchSerperMaps(city: CityRow): Promise<DiscoveredFirm[]> {
+  const key = process.env.SERPER_API_KEY?.trim();
+  if (!key) return [];
+  const place = cityLabel(city);
+  const body = {
+    q: `SEO ${place}`,
+    location: place,
+    gl: city.country === "gb" ? "uk" : "us",
+    hl: "en",
+    num: 20,
+  };
+
+  const endpoints = ["https://google.serper.dev/maps", "https://google.serper.dev/places"];
+  const out: DiscoveredFirm[] = [];
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": key,
+        },
+        body: JSON.stringify(body),
+        cache: "no-store",
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!response.ok) continue;
+      const data = (await response.json()) as {
+        places?: SerperPlace[];
+        localPlaces?: SerperPlace[];
+      };
+      const places = data.places ?? data.localPlaces ?? [];
+      for (const item of places) {
+        const website = item.website ? cleanWebsite(item.website) : null;
+        if (!website) continue;
+        out.push({
+          name: item.title?.trim() || nameFromHost(website),
+          website,
+          city: city.city,
+          country: city.country,
+          address: item.address,
+          mapsUrl: item.placeId
+            ? `https://www.google.com/maps/place/?q=place_id:${item.placeId}`
+            : undefined,
+        });
+      }
+      if (out.length > 0) break;
+    } catch {
+      // try next endpoint
+    }
+  }
+  return out;
+}
+
+async function searchGooglePlaces(city: CityRow): Promise<DiscoveredFirm[]> {
+  const key =
+    process.env.GOOGLE_PLACES_API_KEY?.trim() ||
+    process.env.GOOGLE_MAPS_API_KEY?.trim();
+  if (!key) return [];
+  const place = cityLabel(city);
+  try {
+    const response = await fetch("https://places.googleapis.com/v1/places:searchText", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": key,
+        "X-Goog-FieldMask":
+          "places.displayName,places.websiteUri,places.formattedAddress,places.googleMapsUri",
+      },
+      body: JSON.stringify({
+        textQuery: `SEO ${place}`,
+        languageCode: "en",
+        regionCode: city.country === "gb" ? "GB" : "US",
+      }),
+      cache: "no-store",
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok) return [];
+    const data = (await response.json()) as {
+      places?: Array<{
+        displayName?: { text?: string };
+        websiteUri?: string;
+        formattedAddress?: string;
+        googleMapsUri?: string;
+      }>;
+    };
+    const out: DiscoveredFirm[] = [];
+    for (const item of data.places ?? []) {
+      const website = item.websiteUri ? cleanWebsite(item.websiteUri) : null;
+      if (!website) continue;
+      out.push({
+        name: item.displayName?.text?.trim() || nameFromHost(website),
+        website,
+        city: city.city,
+        country: city.country,
+        address: item.formattedAddress,
+        mapsUrl: item.googleMapsUri,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+async function searchClearbit(query: string, city: CityRow): Promise<DiscoveredFirm[]> {
   const url = new URL("https://autocomplete.clearbit.com/v1/companies/suggest");
   url.searchParams.set("query", query);
   try {
@@ -73,13 +193,17 @@ async function searchClearbit(query: string, city: string): Promise<DiscoveredFi
     const data = (await response.json()) as Array<{ name?: string; domain?: string }>;
     const out: DiscoveredFirm[] = [];
     for (const item of data) {
-      const domain = item.domain?.trim();
-      if (!domain) continue;
-      const website = `https://${domain.replace(/^https?:\/\//, "")}/`;
-      if (!keepWebsite(website)) continue;
+      const website = item.domain ? cleanWebsite(item.domain) : null;
+      if (!website) continue;
       const name = item.name?.trim() || nameFromHost(website);
-      if (!looksLikeSeoFirm(name, domain, city)) continue;
-      out.push({ name, website, city, country: "us" });
+      const blob = `${name} ${item.domain}`.toLowerCase();
+      if (!blob.includes("seo") && !blob.includes("search")) continue;
+      out.push({
+        name,
+        website,
+        city: city.city,
+        country: city.country,
+      });
     }
     return out;
   } catch {
@@ -87,94 +211,30 @@ async function searchClearbit(query: string, city: string): Promise<DiscoveredFi
   }
 }
 
-async function searchBing(query: string): Promise<string[]> {
-  try {
-    const url = new URL("https://www.bing.com/search");
-    url.searchParams.set("q", query);
-    const response = await fetch(url.toString(), {
-      headers: {
-        Accept: "text/html",
-        "User-Agent":
-          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(8000),
-    });
-    if (!response.ok) return [];
-    const html = await response.text();
-    const hrefs = [...html.matchAll(/href="(https?:\/\/[^"]+)"/gi)].map((m) => m[1] ?? "");
-    const out: string[] = [];
-    for (const href of hrefs) {
-      if (!keepWebsite(href)) continue;
-      const clean = `${new URL(href).origin}/`;
-      if (!out.includes(clean)) out.push(clean);
-    }
-    return out.slice(0, 12);
-  } catch {
-    return [];
-  }
-}
-
-async function searchSerper(query: string): Promise<string[]> {
-  const key = process.env.SERPER_API_KEY?.trim();
-  if (!key) return [];
-  const response = await fetch("https://google.serper.dev/search", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-API-KEY": key,
-    },
-    body: JSON.stringify({ q: query, num: 10 }),
-    cache: "no-store",
-  });
-  if (!response.ok) return [];
-  const data = (await response.json()) as { organic?: Array<{ link?: string }> };
-  const out: string[] = [];
-  for (const item of data.organic ?? []) {
-    const link = item.link;
-    if (!link || !keepWebsite(link)) continue;
-    const clean = `${new URL(link).origin}/`;
-    if (!out.includes(clean)) out.push(clean);
-  }
-  return out;
-}
-
-export async function discoverFirms(city: CityRow, limit = 8): Promise<DiscoveredFirm[]> {
+export async function discoverFirms(city: CityRow, limit = 12): Promise<DiscoveredFirm[]> {
   const place = cityLabel(city);
-  const queries = [
-    `${city.city} SEO`,
-    `SEO agency ${place}`,
-    `SEO company ${place}`,
-  ];
-
   const byWebsite = new Map<string, DiscoveredFirm>();
 
-  for (const query of queries) {
-    const fromClearbit = await searchClearbit(query, city.city);
-    for (const firm of fromClearbit) {
-      firm.country = city.country;
-      firm.city = city.city;
-      if (!byWebsite.has(firm.website)) byWebsite.set(firm.website, firm);
-    }
+  const fromMaps = await searchSerperMaps(city);
+  for (const firm of fromMaps) addFirm(byWebsite, firm);
+
+  if (byWebsite.size < 5) {
+    const fromPlaces = await searchGooglePlaces(city);
+    for (const firm of fromPlaces) addFirm(byWebsite, firm);
   }
 
   if (byWebsite.size < 3) {
-    for (const query of queries.slice(0, 2)) {
-      const serper = await searchSerper(query);
-      const bing = serper.length > 0 ? [] : await searchBing(query);
-      for (const website of [...serper, ...bing]) {
-        if (byWebsite.has(website)) continue;
-        const name = nameFromHost(website);
-        if (!looksLikeSeoFirm(name, hostOf(website), city.city)) continue;
-        byWebsite.set(website, {
-          name,
-          website,
-          city: city.city,
-          country: city.country,
-        });
-      }
-    }
+    const fallback = await searchClearbit(`SEO ${place}`, city);
+    for (const firm of fallback) addFirm(byWebsite, firm);
   }
 
   return [...byWebsite.values()].slice(0, limit);
+}
+
+export function mapsSearchConfigured(): boolean {
+  return Boolean(
+    process.env.SERPER_API_KEY?.trim() ||
+      process.env.GOOGLE_PLACES_API_KEY?.trim() ||
+      process.env.GOOGLE_MAPS_API_KEY?.trim()
+  );
 }

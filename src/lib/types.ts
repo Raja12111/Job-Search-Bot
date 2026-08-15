@@ -65,6 +65,8 @@ export type DiscoveredFirm = {
   website: string;
   city: string;
   country: "us" | "gb";
+  address?: string;
+  mapsUrl?: string;
 };
 
 export type CrawlResultRow = {
@@ -74,6 +76,8 @@ export type CrawlResultRow = {
   locationLabel: string;
   company: string;
   website: string;
+  address?: string;
+  mapsUrl?: string;
   crawled: boolean;
   careerPages: string[];
   pagesChecked: string[];

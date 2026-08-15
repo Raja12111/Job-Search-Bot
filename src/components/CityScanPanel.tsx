@@ -93,7 +93,7 @@ export function CityScanPanel() {
             jobOpen: false,
             jobCount: 0,
             jobs: [],
-            error: "No SEO firms found in this city",
+            error: "No GMB SEO firms found in this city",
           });
           setRows([...collected]);
           saveResults(collected);
@@ -123,6 +123,8 @@ export function CityScanPanel() {
             locationLabel: cityLabel(row),
             company: firm.name,
             website: firm.website,
+            address: firm.address,
+            mapsUrl: firm.mapsUrl,
             crawled: siteRes.ok,
             careerPages: site.careerPages ?? [],
             pagesChecked: site.pagesChecked ?? [],
@@ -154,10 +156,10 @@ export function CityScanPanel() {
         <h2 className="text-2xl font-semibold">City firm scan</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
           Upload or paste your US and UK city lists. For each city the bot
-          finds SEO firms, then opens their website — careers,
-          jobs, and about pages — and collects openings from the last 30 days.
-          US sheet: <code>City, State</code>. UK sheet: <code>City</code> only.
-          The scan finds SEO firms in each city, then checks their career pages.
+          searches Google Maps for <code>SEO</code>, takes GMB listings with a
+          website, then opens careers / jobs / about pages and keeps openings
+          from the last 30 days. US sheet: <code>City, State</code>. UK sheet:{" "}
+          <code>City</code> only.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a className="text-[#3ee0a2] underline" href="/api/templates/us-cities.csv">
