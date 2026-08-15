@@ -11,19 +11,31 @@ function includesQuery(haystack: string, query: string): boolean {
   const q = normalize(query);
   if (!q) return true;
   const text = normalize(haystack);
-  if (q === "seo") {
-    return (
-      text.includes("seo") ||
-      text.includes("search engine optimization") ||
-      text.includes("search engine optimisation")
-    );
-  }
   return q.split(/\s+/).every((part) => text.includes(part));
 }
 
+function isSeoRole(job: Job): boolean {
+  const title = normalize(job.title);
+  if (
+    title.includes("seo") ||
+    title.includes("search engine optimization") ||
+    title.includes("search engine optimisation") ||
+    title.includes("aeo")
+  ) {
+    return true;
+  }
+  const tags = job.tags.map(normalize);
+  return tags.length > 0 && tags.length <= 3 && tags.includes("seo");
+}
+
 function jobMatches(job: Job, input: SearchInput): boolean {
-  const blob = `${job.title} ${job.company} ${job.location} ${job.tags.join(" ")} ${job.description}`;
-  if (!includesQuery(blob, input.query)) return false;
+  const query = normalize(input.query);
+  if (query === "seo") {
+    if (!isSeoRole(job)) return false;
+  } else {
+    const blob = `${job.title} ${job.company} ${job.location} ${job.tags.join(" ")} ${job.description}`;
+    if (!includesQuery(blob, input.query)) return false;
+  }
   if (input.remoteOnly && !job.remote) return false;
   if (input.location) {
     const loc = normalize(input.location);
