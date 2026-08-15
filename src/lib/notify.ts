@@ -92,6 +92,9 @@ export function configuredChannels(): {
   discord: boolean;
   email: boolean;
   adzuna: boolean;
+  jsearch: boolean;
+  reed: boolean;
+  jooble: boolean;
 } {
   return {
     slack: Boolean(process.env.SLACK_WEBHOOK_URL?.trim()),
@@ -102,5 +105,10 @@ export function configuredChannels(): {
     adzuna: Boolean(
       process.env.ADZUNA_APP_ID?.trim() && process.env.ADZUNA_APP_KEY?.trim()
     ),
+    jsearch: Boolean(
+      process.env.JSEARCH_API_KEY?.trim() || process.env.RAPIDAPI_KEY?.trim()
+    ),
+    reed: Boolean(process.env.REED_API_KEY?.trim()),
+    jooble: Boolean(process.env.JOOBLE_API_KEY?.trim()),
   };
 }

@@ -11,8 +11,9 @@ Live sources (no API key):
 - Jobicy
 - Himalayas
 - Remote OK
+- The Muse
 
-Optional: [Adzuna](https://developer.adzuna.com/) for country-specific listings.
+Optional API keys unlock Indeed, Glassdoor, ZipRecruiter, LinkedIn, Reed, Jooble, and Adzuna.
 
 ## Local
 
@@ -45,6 +46,9 @@ Optional:
 | `DISCORD_WEBHOOK_URL` | Discord webhook |
 | `RESEND_API_KEY` + `NOTIFY_EMAIL` | Email alerts |
 | `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` | Extra job source |
+| `JSEARCH_API_KEY` | Indeed, Glassdoor, ZipRecruiter, LinkedIn, Monster |
+| `REED_API_KEY` | Reed UK |
+| `JOOBLE_API_KEY` | Jooble aggregator |
 
 Cron (Hobby = once per day): `0 8 * * *` UTC → `/api/cron`.
 

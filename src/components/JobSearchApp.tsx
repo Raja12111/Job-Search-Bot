@@ -11,6 +11,9 @@ type StatusPayload = {
     discord: boolean;
     email: boolean;
     adzuna: boolean;
+    jsearch: boolean;
+    reed: boolean;
+    jooble: boolean;
   };
 };
 
@@ -33,6 +36,16 @@ const SOURCE_LABEL: Record<JobSource, string> = {
   lever: "Lever",
   ashby: "Ashby",
   workable: "Workable",
+  indeed: "Indeed",
+  glassdoor: "Glassdoor",
+  ziprecruiter: "ZipRecruiter",
+  linkedin: "LinkedIn",
+  reed: "Reed",
+  monster: "Monster",
+  jooble: "Jooble",
+  jsearch: "JSearch",
+  careerbuilder: "CareerBuilder",
+  simplyhired: "SimplyHired",
 };
 
 function timeAgo(value: string | null): string {
@@ -119,8 +132,8 @@ export function JobSearchApp() {
             Find SEO jobs
           </h1>
           <p className="mt-2 max-w-2xl text-[#93a4bb]">
-            Simple search for SEO roles from Remotive, Arbeitnow, Jobicy,
-            Himalayas, and Remote OK.
+            SEO jobs from Remotive, Jobicy, Himalayas, Remote OK, The Muse,
+            Indeed, Glassdoor, ZipRecruiter, LinkedIn, Reed, Monster, and Jooble.
           </p>
         </div>
         <div className="rounded-2xl border border-[#1d3557] bg-[#0d1b2e] px-4 py-3 text-sm text-[#93a4bb]">
@@ -170,9 +183,13 @@ export function JobSearchApp() {
 
       {status && (
         <section className="grid gap-3 sm:grid-cols-4">
-          <StatusCard label="Slack" on={status.integrations.slack} />
-          <StatusCard label="Discord" on={status.integrations.discord} />
-          <StatusCard label="Email" on={status.integrations.email} />
+          <StatusCard
+            label="Indeed / Glassdoor / ZipRecruiter"
+            on={status.integrations.jsearch}
+            extra="JSearch key"
+          />
+          <StatusCard label="Reed (UK)" on={status.integrations.reed} extra="optional" />
+          <StatusCard label="Jooble" on={status.integrations.jooble} extra="optional" />
           <StatusCard label="Adzuna" on={status.integrations.adzuna} extra="optional" />
         </section>
       )}

@@ -347,6 +347,136 @@ async function fromAdzuna(input: SearchInput): Promise<Job[]> {
   }));
 }
 
+function publisherSource(name: string): JobSource {
+  const n = name.toLowerCase();
+  if (n.includes("indeed")) return "indeed";
+  if (n.includes("glassdoor")) return "glassdoor";
+  if (n.includes("zip")) return "ziprecruiter";
+  if (n.includes("linkedin")) return "linkedin";
+  if (n.includes("reed")) return "reed";
+  if (n.includes("monster")) return "monster";
+  if (n.includes("careerbuilder")) return "careerbuilder";
+  if (n.includes("simply")) return "simplyhired";
+  return "jsearch";
+}
+
+type JSearchJob = {
+  job_id?: string;
+  job_title?: string;
+  employer_name?: string;
+  job_city?: string;
+  job_country?: string;
+  job_is_remote?: boolean;
+  job_apply_link?: string;
+  job_description?: string;
+  job_posted_at_datetime_utc?: string;
+  job_publisher?: string;
+};
+
+async function fromJSearch(input: SearchInput): Promise<Job[]> {
+  const key = process.env.JSEARCH_API_KEY?.trim() || process.env.RAPIDAPI_KEY?.trim();
+  if (!key) throw new Error("JSEARCH_API_KEY not set");
+  const query = [input.query || "SEO", input.location].filter(Boolean).join(" in ");
+  const url = new URL("https://jsearch.p.rapidapi.com/search");
+  url.searchParams.set("query", query);
+  url.searchParams.set("page", "1");
+  url.searchParams.set("num_pages", "1");
+  url.searchParams.set("date_posted", "month");
+  if (input.remoteOnly) url.searchParams.set("remote_jobs_only", "true");
+  const result = await fetchJson<{ data?: JSearchJob[] }>(url.toString(), {
+    headers: {
+      "X-RapidAPI-Key": key,
+      "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+    },
+  });
+  if (!result.ok) throw new Error(result.error);
+  return (result.data.data ?? []).map((item) => ({
+    id: `jsearch-${item.job_id ?? item.job_apply_link ?? item.job_title}`,
+    title: asString(item.job_title) || "Untitled role",
+    company: asString(item.employer_name) || "Unknown company",
+    location: [item.job_city, item.job_country].filter(Boolean).join(", ") || input.location,
+    remote: Boolean(item.job_is_remote),
+    url: asString(item.job_apply_link),
+    source: publisherSource(asString(item.job_publisher)),
+    postedAt: isoFromUnknown(item.job_posted_at_datetime_utc),
+    description: asString(item.job_description).slice(0, 400),
+    tags: [asString(item.job_publisher)].filter(Boolean),
+  }));
+}
+
+type ReedJob = {
+  jobId?: number;
+  jobTitle?: string;
+  employerName?: string;
+  locationName?: string;
+  jobUrl?: string;
+  date?: string;
+  jobDescription?: string;
+};
+
+async function fromReed(input: SearchInput): Promise<Job[]> {
+  const key = process.env.REED_API_KEY?.trim();
+  if (!key) throw new Error("REED_API_KEY not set");
+  const url = new URL("https://www.reed.co.uk/api/1.0/search");
+  url.searchParams.set("keywords", input.query || "SEO");
+  url.searchParams.set("resultsToTake", "50");
+  if (input.location && !["remote", "worldwide"].includes(input.location.toLowerCase())) {
+    url.searchParams.set("locationName", input.location);
+  }
+  const auth = Buffer.from(`${key}:`).toString("base64");
+  const result = await fetchJson<{ results?: ReedJob[] }>(url.toString(), {
+    headers: { Authorization: `Basic ${auth}` },
+  });
+  if (!result.ok) throw new Error(result.error);
+  return (result.data.results ?? []).map((item) => ({
+    id: `reed-${item.jobId ?? item.jobUrl ?? item.jobTitle}`,
+    title: asString(item.jobTitle) || "Untitled role",
+    company: asString(item.employerName) || "Unknown company",
+    location: asString(item.locationName) || input.location || "UK",
+    remote: /remote/i.test(asString(item.locationName)),
+    url: asString(item.jobUrl),
+    source: "reed",
+    postedAt: isoFromUnknown(item.date),
+    description: asString(item.jobDescription).replace(/<[^>]+>/g, " ").slice(0, 400),
+    tags: ["reed"],
+  }));
+}
+
+type JoobleJob = {
+  title?: string;
+  company?: string;
+  location?: string;
+  link?: string;
+  updated?: string;
+  snippet?: string;
+};
+
+async function fromJooble(input: SearchInput): Promise<Job[]> {
+  const key = process.env.JOOBLE_API_KEY?.trim();
+  if (!key) throw new Error("JOOBLE_API_KEY not set");
+  const result = await fetchJson<{ jobs?: JoobleJob[] }>(`https://jooble.org/api/${key}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      keywords: input.query || "SEO",
+      location: input.location || "",
+    }),
+  });
+  if (!result.ok) throw new Error(result.error);
+  return (result.data.jobs ?? []).map((item, index) => ({
+    id: `jooble-${item.link ?? item.title ?? index}`,
+    title: asString(item.title) || "Untitled role",
+    company: asString(item.company) || "Unknown company",
+    location: asString(item.location) || input.location || "Unknown",
+    remote: /remote/i.test(asString(item.location)),
+    url: asString(item.link),
+    source: "jooble",
+    postedAt: isoFromUnknown(item.updated),
+    description: asString(item.snippet).slice(0, 400),
+    tags: ["jooble"],
+  }));
+}
+
 const SOURCE_FETCHERS: Array<{
   source: JobSource;
   run: (input: SearchInput) => Promise<Job[]>;
@@ -359,6 +489,9 @@ const SOURCE_FETCHERS: Array<{
   { source: "remoteok", run: () => fromRemoteOk() },
   { source: "muse", run: (input) => fromMuse(input) },
   { source: "adzuna", run: (input) => fromAdzuna(input), optional: true },
+  { source: "jsearch", run: (input) => fromJSearch(input), optional: true },
+  { source: "reed", run: (input) => fromReed(input), optional: true },
+  { source: "jooble", run: (input) => fromJooble(input), optional: true },
 ];
 
 export async function searchJobs(input: SearchInput): Promise<SearchResult> {
@@ -398,6 +531,23 @@ export async function searchJobs(input: SearchInput): Promise<SearchResult> {
     const bTime = b.postedAt ? Date.parse(b.postedAt) : 0;
     return bTime - aTime;
   });
+
+  if (sources.jsearch?.ok) {
+    for (const job of jobs) {
+      if (
+        job.source === "indeed" ||
+        job.source === "glassdoor" ||
+        job.source === "ziprecruiter" ||
+        job.source === "linkedin" ||
+        job.source === "monster" ||
+        job.source === "careerbuilder" ||
+        job.source === "simplyhired"
+      ) {
+        const current = sources[job.source];
+        sources[job.source] = { ok: true, count: (current?.count ?? 0) + 1 };
+      }
+    }
+  }
 
   return {
     jobs,

@@ -10,7 +10,17 @@ export type JobSource =
   | "greenhouse"
   | "lever"
   | "ashby"
-  | "workable";
+  | "workable"
+  | "indeed"
+  | "glassdoor"
+  | "ziprecruiter"
+  | "linkedin"
+  | "reed"
+  | "monster"
+  | "jooble"
+  | "jsearch"
+  | "careerbuilder"
+  | "simplyhired";
 
 export type Job = {
   id: string;
