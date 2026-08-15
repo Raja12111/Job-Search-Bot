@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const row: CityRow = { city, state, country };
   const location = cityLabel(row);
   const result = await searchJobs({
-    query: "SEO marketing",
+    query: "SEO",
     location,
     remoteOnly: false,
     maxAgeHours: THIRTY_DAYS_HOURS,

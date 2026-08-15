@@ -1,4 +1,5 @@
 import type { DiscoveredFirm, Job, JobSource } from "@/lib/types";
+import { isSeoRole } from "@/lib/jobs";
 
 const USER_AGENT =
   "JobSearchBot/1.0 (+https://github.com/Raja12111/Job-Search-Bot)";
@@ -273,6 +274,8 @@ export async function crawlFirmCareers(firm: DiscoveredFirm): Promise<{
   return {
     pagesChecked,
     careerPages: [...new Set(careerPages)],
-    jobs: uniqueJobs(jobs).filter((job) => within30Days(job.postedAt) && job.url),
+    jobs: uniqueJobs(jobs).filter(
+      (job) => within30Days(job.postedAt) && job.url && isSeoRole(job)
+    ),
   };
 }

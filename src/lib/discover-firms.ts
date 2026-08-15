@@ -106,10 +106,7 @@ async function searchSerper(query: string): Promise<string[]> {
 
 export async function discoverFirms(city: CityRow, limit = 8): Promise<DiscoveredFirm[]> {
   const place = cityLabel(city);
-  const queries = [
-    `SEO agency ${place}`,
-    `digital marketing agency ${place}`,
-  ];
+  const queries = [`SEO agency ${place}`, `SEO company ${place}`];
   const websites: string[] = [];
   for (const query of queries) {
     const serper = await searchSerper(query);

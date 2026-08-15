@@ -132,7 +132,7 @@ export function CityScanPanel() {
         <h2 className="text-2xl font-semibold">City firm scan</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
           Upload or paste your US and UK city lists. For each city the bot
-          finds SEO and Marketing firms, then opens their website — careers,
+          finds SEO firms, then opens their website — careers,
           jobs, and about pages — and collects openings from the last 30 days.
           US sheet: <code>City, State</code>. UK sheet: <code>City</code> only.
         </p>

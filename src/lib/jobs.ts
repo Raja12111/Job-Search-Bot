@@ -14,7 +14,7 @@ function includesQuery(haystack: string, query: string): boolean {
   return q.split(/\s+/).every((part) => text.includes(part));
 }
 
-function isSeoRole(job: Job): boolean {
+export function isSeoRole(job: Job): boolean {
   const title = normalize(job.title);
   if (
     title.includes("seo") ||
@@ -28,18 +28,9 @@ function isSeoRole(job: Job): boolean {
   return tags.length > 0 && tags.length <= 3 && tags.includes("seo");
 }
 
-function isMarketingRole(job: Job): boolean {
-  const title = normalize(job.title);
-  return /\b(marketing|digital marketing|content marketing|growth marketing|performance marketing|ppc|sem|social media|paid media)\b/.test(
-    title
-  );
-}
-
 function jobMatches(job: Job, input: SearchInput): boolean {
   const query = normalize(input.query);
-  if (input.cityScan || query === "seo marketing" || query === "seo and marketing") {
-    if (!isSeoRole(job) && !isMarketingRole(job)) return false;
-  } else if (query === "seo") {
+  if (input.cityScan || query === "seo") {
     if (!isSeoRole(job)) return false;
   } else {
     const blob = `${job.title} ${job.company} ${job.location} ${job.tags.join(" ")} ${job.description}`;
@@ -332,7 +323,7 @@ async function fromAdzuna(input: SearchInput): Promise<Job[]> {
   url.searchParams.set("app_id", appId);
   url.searchParams.set("app_key", appKey);
   url.searchParams.set("results_per_page", "50");
-  url.searchParams.set("what", input.cityScan ? "SEO marketing" : input.query || "SEO");
+  url.searchParams.set("what", input.cityScan ? "SEO" : input.query || "SEO");
   if (input.location) url.searchParams.set("where", input.location.split(",")[0] ?? input.location);
   if (input.maxAgeHours) {
     url.searchParams.set("max_days_old", String(Math.max(1, Math.ceil(input.maxAgeHours / 24))));
