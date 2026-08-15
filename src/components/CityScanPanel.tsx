@@ -93,49 +93,57 @@ export function CityScanPanel() {
             jobOpen: false,
             jobCount: 0,
             jobs: [],
-            error: "No GMB SEO firms found in this city",
+            error: "No SEO firms found in this city",
           });
           setRows([...collected]);
           saveResults(collected);
           continue;
         }
 
-        for (const firm of foundFirms) {
-          setCurrent(`Opening ${firm.website}`);
-          const siteParams = new URLSearchParams({
-            website: firm.website,
-            company: firm.name,
-            city: row.city,
-            country: row.country,
-          });
-          const siteRes = await fetch(`/api/scan-site?${siteParams.toString()}`);
-          const site = (await siteRes.json()) as {
-            jobs?: Job[];
-            careerPages?: string[];
-            pagesChecked?: string[];
-            error?: string;
-          };
-          const jobs = siteRes.ok ? site.jobs ?? [] : [];
-          const result: CrawlResultRow = {
-            city: row.city,
-            state: row.state,
-            country: row.country,
-            locationLabel: cityLabel(row),
-            company: firm.name,
-            website: firm.website,
-            address: firm.address,
-            mapsUrl: firm.mapsUrl,
-            crawled: siteRes.ok,
-            careerPages: site.careerPages ?? [],
-            pagesChecked: site.pagesChecked ?? [],
-            jobOpen: jobs.length > 0,
-            jobCount: jobs.length,
-            latestJobTitle: jobs[0]?.title,
-            latestJobUrl: jobs[0]?.url,
-            jobs,
-            error: siteRes.ok ? undefined : site.error || "Scan failed",
-          };
-          collected.push(result);
+        setCurrent(`Found ${foundFirms.length} firms in ${cityLabel(row)}`);
+        for (let start = 0; start < foundFirms.length; start += 4) {
+          const batch = foundFirms.slice(start, start + 4);
+          setCurrent(`Opening ${batch.map((firm) => firm.website).join(", ")}`);
+          const scanned = await Promise.all(
+            batch.map(async (firm) => {
+              const siteParams = new URLSearchParams({
+                website: firm.website,
+                company: firm.name,
+                city: row.city,
+                country: row.country,
+              });
+              const siteRes = await fetch(`/api/scan-site?${siteParams.toString()}`);
+              const site = (await siteRes.json()) as {
+                jobs?: Job[];
+                careerPages?: string[];
+                pagesChecked?: string[];
+                error?: string;
+              };
+              const jobs = siteRes.ok ? site.jobs ?? [] : [];
+              const result: CrawlResultRow = {
+                city: row.city,
+                state: row.state,
+                country: row.country,
+                locationLabel: cityLabel(row),
+                company: firm.name,
+                website: firm.website,
+                address: firm.address,
+                mapsUrl: firm.mapsUrl,
+                foundVia: firm.foundVia,
+                crawled: siteRes.ok,
+                careerPages: site.careerPages ?? [],
+                pagesChecked: site.pagesChecked ?? [],
+                jobOpen: jobs.length > 0,
+                jobCount: jobs.length,
+                latestJobTitle: jobs[0]?.title,
+                latestJobUrl: jobs[0]?.url,
+                jobs,
+                error: siteRes.ok ? undefined : site.error || "Scan failed",
+              };
+              return result;
+            })
+          );
+          collected.push(...scanned);
           setRows([...collected]);
           saveResults(collected);
         }
@@ -156,10 +164,11 @@ export function CityScanPanel() {
         <h2 className="text-2xl font-semibold">City firm scan</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
           Upload or paste your US and UK city lists. For each city the bot
-          searches Google Maps for <code>SEO</code>, takes GMB listings with a
-          website, then opens careers / jobs / about pages and keeps openings
-          from the last 30 days. US sheet: <code>City, State</code>. UK sheet:{" "}
-          <code>City</code> only.
+          finds SEO firms from Google Maps, Yelp, Clutch, DesignRush, Sortlist,
+          and SEMrush — any local SEO firm with a website, not only domains
+          that contain “SEO”. Then it opens careers / jobs / about pages and
+          keeps openings from the last 30 days. US sheet:{" "}
+          <code>City, State</code>. UK sheet: <code>City</code> only.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a className="text-[#3ee0a2] underline" href="/api/templates/us-cities.csv">

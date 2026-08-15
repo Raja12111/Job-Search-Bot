@@ -3,7 +3,7 @@ import { discoverFirms } from "@/lib/discover-firms";
 import type { CityRow } from "@/lib/types";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -15,16 +15,22 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "city is required" }, { status: 400 });
   }
   const row: CityRow = { city, state, country };
-  const firms = await discoverFirms(row, 8);
+  const firms = await discoverFirms(row, 50);
+  const via: Record<string, number> = {};
+  for (const firm of firms) {
+    const key = firm.foundVia || "unknown";
+    via[key] = (via[key] ?? 0) + 1;
+  }
   return NextResponse.json({
     city,
     state,
     country,
     count: firms.length,
+    via,
     firms,
     note:
       firms.length === 0
-        ? "No GMB SEO firms found. Add SERPER_API_KEY or GOOGLE_PLACES_API_KEY on Vercel."
+        ? "No SEO firms found in Maps, Yelp, Clutch, DesignRush, Sortlist, or SEMrush."
         : undefined,
   });
 }

@@ -23,6 +23,7 @@ export function ResultsPage() {
         State: row.country === "us" ? row.state ?? "" : "",
         Firm: row.company,
         Address: row.address ?? "",
+        FoundVia: row.foundVia ?? "",
         Website: row.website,
         Crawled: row.crawled ? "Yes" : "No",
         CareerPages: row.careerPages.join(" | "),
@@ -101,6 +102,9 @@ export function ResultsPage() {
                     <div>{row.company}</div>
                     {row.address ? (
                       <div className="text-xs text-[#93a4bb]">{row.address}</div>
+                    ) : null}
+                    {row.foundVia ? (
+                      <div className="text-xs text-[#93a4bb]">via {row.foundVia}</div>
                     ) : null}
                     {row.mapsUrl ? (
                       <a
