@@ -78,7 +78,29 @@ export function CityScanPanel() {
         };
         if (!discoveredRes.ok) throw new Error(discovered.error || "Discover failed");
 
-        for (const firm of discovered.firms ?? []) {
+        const foundFirms = discovered.firms ?? [];
+        if (foundFirms.length === 0) {
+          collected.push({
+            city: row.city,
+            state: row.state,
+            country: row.country,
+            locationLabel: cityLabel(row),
+            company: "—",
+            website: "",
+            crawled: false,
+            careerPages: [],
+            pagesChecked: [],
+            jobOpen: false,
+            jobCount: 0,
+            jobs: [],
+            error: "No SEO firms found in this city",
+          });
+          setRows([...collected]);
+          saveResults(collected);
+          continue;
+        }
+
+        for (const firm of foundFirms) {
           setCurrent(`Opening ${firm.website}`);
           const siteParams = new URLSearchParams({
             website: firm.website,
@@ -135,6 +157,7 @@ export function CityScanPanel() {
           finds SEO firms, then opens their website — careers,
           jobs, and about pages — and collects openings from the last 30 days.
           US sheet: <code>City, State</code>. UK sheet: <code>City</code> only.
+          The scan finds SEO firms in each city, then checks their career pages.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a className="text-[#3ee0a2] underline" href="/api/templates/us-cities.csv">

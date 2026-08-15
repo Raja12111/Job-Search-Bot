@@ -98,14 +98,18 @@ export function ResultsPage() {
                   <td className="px-3 py-2 text-[#93a4bb]">{row.locationLabel}</td>
                   <td className="px-3 py-2">
                     <div>{row.company}</div>
-                    <a
-                      className="text-xs text-[#7aa2ff] underline"
-                      href={row.website}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {row.website}
-                    </a>
+                    {row.website ? (
+                      <a
+                        className="text-xs text-[#7aa2ff] underline"
+                        href={row.website}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {row.website}
+                      </a>
+                    ) : (
+                      <div className="text-xs text-[#93a4bb]">No website</div>
+                    )}
                     {!row.crawled && (
                       <div className="text-xs text-red-300">{row.error || "Could not crawl"}</div>
                     )}

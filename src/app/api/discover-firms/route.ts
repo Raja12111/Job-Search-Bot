@@ -16,5 +16,15 @@ export async function GET(request: Request) {
   }
   const row: CityRow = { city, state, country };
   const firms = await discoverFirms(row, 8);
-  return NextResponse.json({ city, state, country, count: firms.length, firms });
+  return NextResponse.json({
+    city,
+    state,
+    country,
+    count: firms.length,
+    firms,
+    note:
+      firms.length === 0
+        ? "No SEO firms found. Add SERPER_API_KEY on Vercel for stronger city search."
+        : undefined,
+  });
 }
