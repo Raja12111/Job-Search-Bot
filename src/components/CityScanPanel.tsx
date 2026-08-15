@@ -41,9 +41,9 @@ export function CityScanPanel() {
     }
     const rows = data.cities ?? [];
     setter(
-      ["City,State,Country", ...rows.map((row) => `${row.city},${row.state},${row.country === "gb" ? "UK" : "US"}`)].join(
-        "\n"
-      )
+      country === "gb"
+        ? ["City", ...rows.map((row) => row.city)].join("\n")
+        : ["City,State", ...rows.map((row) => `${row.city},${row.state}`)].join("\n")
     );
   }
 
@@ -96,6 +96,7 @@ export function CityScanPanel() {
           const jobs = siteRes.ok ? site.jobs ?? [] : [];
           const result: CrawlResultRow = {
             city: row.city,
+            state: row.state,
             country: row.country,
             locationLabel: cityLabel(row),
             company: firm.name,
@@ -133,7 +134,7 @@ export function CityScanPanel() {
           Upload or paste your US and UK city lists. For each city the bot
           finds SEO and Marketing firms, then opens their website — careers,
           jobs, and about pages — and collects openings from the last 30 days.
-          Sheet columns: <code>City, State, Country</code>.
+          US sheet: <code>City, State</code>. UK sheet: <code>City</code> only.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a className="text-[#3ee0a2] underline" href="/api/templates/us-cities.csv">
@@ -149,12 +150,14 @@ export function CityScanPanel() {
         <SheetBox
           title="United States cities"
           text={usText}
+          placeholder={"City,State\nAustin,TX"}
           onText={setUsText}
           onFile={(file) => uploadSheet(file, "us", setUsText).catch((err) => setError(err.message))}
         />
         <SheetBox
           title="United Kingdom cities"
           text={ukText}
+          placeholder={"City\nLondon"}
           onText={setUkText}
           onFile={(file) => uploadSheet(file, "gb", setUkText).catch((err) => setError(err.message))}
         />
@@ -204,11 +207,13 @@ export function CityScanPanel() {
 function SheetBox({
   title,
   text,
+  placeholder,
   onText,
   onFile,
 }: {
   title: string;
   text: string;
+  placeholder: string;
   onText: (value: string) => void;
   onFile: (file: File) => void;
 }) {
@@ -227,7 +232,7 @@ function SheetBox({
         value={text}
         onChange={(event) => onText(event.target.value)}
         rows={8}
-        placeholder={"City,State,Country\nAustin,TX,US"}
+        placeholder={placeholder}
         className="rounded-xl border border-[#1d3557] bg-[#07111f] px-3 py-2 text-sm outline-none focus:border-[#3ee0a2]"
       />
     </label>

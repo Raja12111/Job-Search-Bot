@@ -33,8 +33,12 @@ export function parseCityTable(text: string, fallbackCountry?: "us" | "gb"): Cit
   const cityIdx = hasHeader
     ? Math.max(0, headerIndex(headers, ["city", "cities", "town", "name", "location"]))
     : 0;
-  const stateIdx = hasHeader ? headerIndex(headers, ["state", "region", "county"]) : 1;
-  const countryIdx = hasHeader ? headerIndex(headers, ["country", "nation"]) : 2;
+  const stateIdx = hasHeader
+    ? headerIndex(headers, ["state", "region", "county"])
+    : fallbackCountry === "gb"
+      ? -1
+      : 1;
+  const countryIdx = hasHeader ? headerIndex(headers, ["country", "nation"]) : -1;
 
   const rows = hasHeader ? lines.slice(1) : lines;
   const seen = new Set<string>();
@@ -81,7 +85,6 @@ function splitRow(line: string): string[] {
 
 export function cityLabel(row: CityRow): string {
   if (row.country === "us" && row.state) return `${row.city}, ${row.state}`;
-  if (row.country === "gb") return row.state ? `${row.city}, ${row.state}` : `${row.city}, United Kingdom`;
   return row.city;
 }
 

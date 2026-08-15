@@ -19,8 +19,8 @@ export function ResultsPage() {
   function download() {
     const csv = toCsv(
       rows.map((row) => ({
-        Country: row.country === "gb" ? "UK" : "US",
         City: row.city,
+        State: row.country === "us" ? row.state ?? "" : "",
         Firm: row.company,
         Website: row.website,
         Crawled: row.crawled ? "Yes" : "No",
@@ -85,7 +85,7 @@ export function ResultsPage() {
           <table className="min-w-full text-left text-sm">
             <thead className="bg-[#12263f] text-[#93a4bb]">
               <tr>
-                <th className="px-3 py-2">City</th>
+                <th className="px-3 py-2">City / State</th>
                 <th className="px-3 py-2">Website crawled</th>
                 <th className="px-3 py-2">Career / jobs page</th>
                 <th className="px-3 py-2">Job open</th>

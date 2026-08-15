@@ -59,6 +59,7 @@ export type DiscoveredFirm = {
 
 export type CrawlResultRow = {
   city: string;
+  state?: string;
   country: "us" | "gb";
   locationLabel: string;
   company: string;
