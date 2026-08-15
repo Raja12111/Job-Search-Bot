@@ -57,6 +57,23 @@ export type DiscoveredFirm = {
   country: "us" | "gb";
 };
 
+export type CrawlResultRow = {
+  city: string;
+  country: "us" | "gb";
+  locationLabel: string;
+  company: string;
+  website: string;
+  crawled: boolean;
+  careerPages: string[];
+  pagesChecked: string[];
+  jobOpen: boolean;
+  jobCount: number;
+  latestJobTitle?: string;
+  latestJobUrl?: string;
+  jobs: Job[];
+  error?: string;
+};
+
 export type SearchResult = {
   jobs: Job[];
   sources: Partial<Record<JobSource, { ok: boolean; count: number; error?: string }>>;
