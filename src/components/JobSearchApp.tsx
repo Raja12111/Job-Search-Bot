@@ -28,6 +28,11 @@ const SOURCE_LABEL: Record<JobSource, string> = {
   remoteok: "Remote OK",
   adzuna: "Adzuna",
   muse: "The Muse",
+  "career-page": "Career page",
+  greenhouse: "Greenhouse",
+  lever: "Lever",
+  ashby: "Ashby",
+  workable: "Workable",
 };
 
 function timeAgo(value: string | null): string {

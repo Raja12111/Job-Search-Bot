@@ -5,7 +5,12 @@ export type JobSource =
   | "himalayas"
   | "remoteok"
   | "adzuna"
-  | "muse";
+  | "muse"
+  | "career-page"
+  | "greenhouse"
+  | "lever"
+  | "ashby"
+  | "workable";
 
 export type Job = {
   id: string;
@@ -40,7 +45,16 @@ export type FirmHit = {
   city: string;
   country: "us" | "gb";
   agencyLike: boolean;
+  website?: string;
+  careerPages?: string[];
   jobs: Job[];
+};
+
+export type DiscoveredFirm = {
+  name: string;
+  website: string;
+  city: string;
+  country: "us" | "gb";
 };
 
 export type SearchResult = {

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { cityLabel, parseCityTable, toCsv } from "@/lib/cities";
-import type { CityRow, FirmHit } from "@/lib/types";
+import type { CityRow, DiscoveredFirm, FirmHit, Job } from "@/lib/types";
 
 type ScanFirm = FirmHit & { locationLabel: string };
 
@@ -62,20 +62,47 @@ export function CityScanPanel() {
       const row = list[i];
       if (!row) continue;
       setIndex(i + 1);
-      setCurrent(cityLabel(row));
+      setCurrent(`Finding firms in ${cityLabel(row)}`);
       try {
-        const params = new URLSearchParams({
+        const discoverParams = new URLSearchParams({
           city: row.city,
           state: row.state,
           country: row.country,
         });
-        const response = await fetch(`/api/scan-city?${params.toString()}`);
-        const data = (await response.json()) as { firms?: FirmHit[]; error?: string };
-        if (!response.ok) throw new Error(data.error || "Scan failed");
-        for (const firm of data.firms ?? []) {
-          collected.push({ ...firm, locationLabel: cityLabel(row) });
+        const discoveredRes = await fetch(`/api/discover-firms?${discoverParams.toString()}`);
+        const discovered = (await discoveredRes.json()) as {
+          firms?: DiscoveredFirm[];
+          error?: string;
+        };
+        if (!discoveredRes.ok) throw new Error(discovered.error || "Discover failed");
+
+        for (const firm of discovered.firms ?? []) {
+          setCurrent(`Opening ${firm.website}`);
+          const siteParams = new URLSearchParams({
+            website: firm.website,
+            company: firm.name,
+            city: row.city,
+            country: row.country,
+          });
+          const siteRes = await fetch(`/api/scan-site?${siteParams.toString()}`);
+          const site = (await siteRes.json()) as {
+            jobs?: Job[];
+            careerPages?: string[];
+            error?: string;
+          };
+          if (!siteRes.ok || !site.jobs?.length) continue;
+          const hit: FirmHit = {
+            company: firm.name,
+            city: row.city,
+            country: row.country,
+            agencyLike: true,
+            website: firm.website,
+            careerPages: site.careerPages ?? [],
+            jobs: site.jobs,
+          };
+          collected.push({ ...hit, locationLabel: cityLabel(row) });
+          setFirms([...collected]);
         }
-        setFirms([...collected]);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Scan failed");
       }
@@ -91,9 +118,10 @@ export function CityScanPanel() {
         Country: firm.country === "gb" ? "UK" : "US",
         City: firm.city,
         Firm: firm.company,
-        AgencyLike: firm.agencyLike ? "Yes" : "No",
+        Website: firm.website ?? "",
+        CareerPages: (firm.careerPages ?? []).join(" | "),
         JobTitle: job.title,
-        Posted: job.postedAt ?? "",
+        Posted: job.postedAt ?? "Listed now",
         ApplyUrl: job.url,
         Source: job.source,
       }))
@@ -112,9 +140,10 @@ export function CityScanPanel() {
       <div className="rounded-3xl border border-[#1d3557] bg-[#0d1b2e]/80 p-5">
         <h2 className="text-2xl font-semibold">City firm scan</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
-          Upload or paste your US and UK city lists. The bot checks each city
-          for SEO and Marketing jobs posted in the last 30 days, then groups
-          them by firm. Sheet columns: <code>City, State, Country</code>.
+          Upload or paste your US and UK city lists. For each city the bot
+          finds SEO and Marketing firms, then opens their website — careers,
+          jobs, and about pages — and collects openings from the last 30 days.
+          Sheet columns: <code>City, State, Country</code>.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a className="text-[#3ee0a2] underline" href="/templates/us-cities.csv">
@@ -177,7 +206,7 @@ export function CityScanPanel() {
             <thead className="bg-[#12263f] text-[#93a4bb]">
               <tr>
                 <th className="px-3 py-2">City</th>
-                <th className="px-3 py-2">Firm</th>
+                <th className="px-3 py-2">Firm / website</th>
                 <th className="px-3 py-2">Jobs (30 days)</th>
                 <th className="px-3 py-2">Latest role</th>
               </tr>
@@ -187,11 +216,11 @@ export function CityScanPanel() {
                 <tr key={`${firm.country}-${firm.city}-${firm.company}`} className="border-t border-[#1d3557]">
                   <td className="px-3 py-2 text-[#93a4bb]">{firm.locationLabel}</td>
                   <td className="px-3 py-2">
-                    {firm.company}
-                    {firm.agencyLike ? (
-                      <span className="ml-2 rounded-full bg-[#12263f] px-2 py-0.5 text-xs text-[#3ee0a2]">
-                        agency-like
-                      </span>
+                    <div>{firm.company}</div>
+                    {firm.website ? (
+                      <a className="text-xs text-[#7aa2ff] underline" href={firm.website} target="_blank" rel="noreferrer">
+                        {firm.website}
+                      </a>
                     ) : null}
                   </td>
                   <td className="px-3 py-2">{firm.jobs.length}</td>
