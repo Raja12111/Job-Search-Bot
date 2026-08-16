@@ -117,12 +117,15 @@ export function CityExplorePanel() {
   const [doneCount, setDoneCount] = useState(0);
   const [doneSkipped, setDoneSkipped] = useState(0);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [waitSeconds, setWaitSeconds] = useState(0);
+  const startExploreRef = useRef<() => Promise<void>>(async () => {});
 
   useEffect(() => {
     setSavedCount(loadAllResults().length);
     const loaded = readSavedQueue();
     queueRef.current = loaded;
     setQueue(loaded);
+    void startExploreRef.current();
   }, []);
 
   function writeQueue(next: QueueItem[]) {
@@ -320,6 +323,15 @@ export function CityExplorePanel() {
     }
   }
 
+  async function waitThenContinue(nextName: string) {
+    for (let left = 5; left > 0; left -= 1) {
+      setWaitSeconds(left);
+      setCurrent(`Starting ${nextName} in ${left}s`);
+      await new Promise((resolve) => window.setTimeout(resolve, 1000));
+    }
+    setWaitSeconds(0);
+  }
+
   async function startExplore() {
     if (city.trim()) addCityToQueue();
     if (queueRef.current.every((item) => item.status !== "wait") && !city.trim()) {
@@ -337,13 +349,18 @@ export function CityExplorePanel() {
         markQueue(next.id, "run");
         await exploreOneCity(next);
         markQueue(next.id, "done");
+        const upcoming = queueRef.current.find((item) => item.status === "wait");
+        if (upcoming) await waitThenContinue(upcoming.city);
       }
     } finally {
       runningRef.current = false;
       setRunning(false);
+      setWaitSeconds(0);
       setCurrent("");
     }
   }
+
+  startExploreRef.current = startExplore;
 
   function finishCity(cityName: string, count: number, skippedCount = 0) {
     setDoneCity(cityName);
@@ -359,9 +376,9 @@ export function CityExplorePanel() {
       <div className="rounded-3xl border border-[#1d3557] bg-[#0d1b2e]/80 p-5">
         <h2 className="text-2xl font-semibold">City explorer</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
-          Nashville through Modesto are already in the list. The bot still
-          goes one city at a time: search, crawl, show Done, then start the
-          next city. Each website is crawled once.
+          Nashville through Modesto are already in the list. The bot starts
+          on its own and goes one city at a time. After each city it shows
+          Done, waits 5 seconds, then starts the next city.
         </p>
       </div>
 
@@ -452,11 +469,13 @@ export function CityExplorePanel() {
           <p className="mt-1 text-sm text-[#93a4bb]">
             {doneCount} website{doneCount === 1 ? "" : "s"} checked
             {doneSkipped > 0 ? `, ${doneSkipped} already crawled skipped` : ""}.
-            {running && nextCity
-              ? ` Next: ${nextCity.city}. Stay on this page.`
-              : waiting > 0
-                ? " Add more cities or click Explore to continue one by one."
-                : " Stay on this page and add the next city when you are ready."}
+            {waitSeconds > 0 && nextCity
+              ? ` Next city ${nextCity.city} starts in ${waitSeconds}s. Stay on this page.`
+              : running && nextCity
+                ? ` Next: ${nextCity.city}. Stay on this page.`
+                : waiting > 0
+                  ? " The next city will start automatically."
+                  : " All listed cities are done. Stay on this page."}
           </p>
         </div>
       )}
