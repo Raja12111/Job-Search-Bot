@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { JobUrlList } from "@/components/JobUrlList";
 import { cityLabel } from "@/lib/cities";
-import { loadAllResults, saveCityResults } from "@/lib/results-store";
+import { alreadyCrawled, loadAllResults, loadCrawledHosts, saveCityResults } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
 
 const STEPS = [
@@ -59,6 +59,7 @@ export function CityExplorePanel() {
   const [savedCount, setSavedCount] = useState(0);
   const [doneCity, setDoneCity] = useState("");
   const [doneCount, setDoneCount] = useState(0);
+  const [doneSkipped, setDoneSkipped] = useState(0);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
@@ -75,6 +76,7 @@ export function CityExplorePanel() {
     setError("");
     setDoneCity("");
     setDoneCount(0);
+    setDoneSkipped(0);
     setProgress({ done: 0, total: 0 });
     setRows([]);
     setRunning(true);
@@ -117,8 +119,14 @@ export function CityExplorePanel() {
       }
     }
 
-    const firms = [...found.values()];
+    const crawled = loadCrawledHosts();
+    const discovered = [...found.values()];
+    const firms = discovered.filter((firm) => !alreadyCrawled(firm.website, crawled));
+    const skipped = discovered.length - firms.length;
     const collected: CrawlResultRow[] = [];
+    if (skipped > 0) {
+      setCurrent(`Skipping ${skipped} site${skipped === 1 ? "" : "s"} already crawled`);
+    }
     try {
       if (firms.length === 0) {
         collected.push({
@@ -134,7 +142,10 @@ export function CityExplorePanel() {
           jobOpen: false,
           jobCount: 0,
           jobs: [],
-          error: "No SEO firms found from Google, Clutch, DesignRush, or other directories",
+          error:
+            skipped > 0
+              ? `All ${skipped} sites were already crawled in a previous city`
+              : "No SEO firms found from Google, Clutch, DesignRush, or other directories",
         });
         setRows(collected);
         setSavedCount(saveCityResults(collected).length);
@@ -213,7 +224,7 @@ export function CityExplorePanel() {
     } finally {
       if (collected.length > 0) {
         setSavedCount(saveCityResults(collected).length);
-        finishCity(cityName, collected.length);
+        finishCity(cityName, collected.length, skipped);
       } else {
         setRunning(false);
         setCurrent("");
@@ -221,11 +232,12 @@ export function CityExplorePanel() {
     }
   }
 
-  function finishCity(cityName: string, count: number) {
+  function finishCity(cityName: string, count: number, skippedCount = 0) {
     setRunning(false);
     setCurrent("");
     setDoneCity(cityName);
     setDoneCount(count);
+    setDoneSkipped(skippedCount);
     setCity("");
   }
 
@@ -235,10 +247,10 @@ export function CityExplorePanel() {
         <h2 className="text-2xl font-semibold">City explorer</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
           Give one city. The bot searches Google for SEO firms, then Clutch,
-          DesignRush, and other local directories. The same agency often
-          appears on more than one list, so we crawl each website only once.
-          Each city is saved. Use Saved results to review any city and filter
-          to job openings only.
+          DesignRush, and other local directories. Each website is crawled
+          once — later cities skip sites already checked, including tools
+          like Nutshell and TeamAI. Each city is saved. Use Saved results to
+          review any city and filter to job openings only.
         </p>
       </div>
 
@@ -269,8 +281,11 @@ export function CityExplorePanel() {
         <div className="rounded-2xl border border-[#3ee0a2] bg-[#12382c] px-5 py-4">
           <p className="text-lg font-semibold text-[#3ee0a2]">Done — {doneCity} is saved</p>
           <p className="mt-1 text-sm text-[#93a4bb]">
-            {doneCount} website{doneCount === 1 ? "" : "s"} checked. Stay on this
-            page and type the next city above, then click Explore this city.
+            {doneCount} website{doneCount === 1 ? "" : "s"} checked
+            {doneSkipped > 0
+              ? `, ${doneSkipped} already crawled skipped`
+              : ""}. Stay on this page and type the next city above, then click
+            Explore this city.
           </p>
         </div>
       )}

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { cityLabel, parseCityTable } from "@/lib/cities";
-import { saveCityResults } from "@/lib/results-store";
+import { alreadyCrawled, loadCrawledHosts, saveCityResults, websiteHost } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
 
 export function CityScanPanel() {
@@ -56,6 +56,7 @@ export function CityScanPanel() {
     setIndex(0);
 
     const collected: CrawlResultRow[] = [];
+    const crawled = loadCrawledHosts();
     for (let i = 0; i < list.length; i += 1) {
       const row = list[i];
       if (!row) continue;
@@ -74,7 +75,9 @@ export function CityScanPanel() {
         };
         if (!discoveredRes.ok) throw new Error(discovered.error || "Discover failed");
 
-        const foundFirms = discovered.firms ?? [];
+        const foundFirms = (discovered.firms ?? []).filter(
+          (firm) => !alreadyCrawled(firm.website, crawled)
+        );
         if (foundFirms.length === 0) {
           collected.push({
             city: row.city,
@@ -140,6 +143,10 @@ export function CityScanPanel() {
             })
           );
           collected.push(...scanned);
+          for (const firm of scanned) {
+            const host = websiteHost(firm.website);
+            if (host) crawled.add(host);
+          }
           setRows([...collected]);
           saveCityResults(collected);
         }

@@ -1,7 +1,9 @@
+import { hostOf } from "@/lib/firm-web";
 import type { CrawlResultRow } from "@/lib/types";
 
 export const RESULTS_STORAGE_KEY = "job-search-bot-results";
 export const ARCHIVE_STORAGE_KEY = "job-search-bot-archive";
+export const CRAWLED_HOSTS_KEY = "job-search-bot-crawled-hosts";
 
 export function cityKey(row: Pick<CrawlResultRow, "country" | "city" | "state">): string {
   return `${row.country}|${row.city.trim().toLowerCase()}|${(row.state ?? "").trim().toLowerCase()}`;
@@ -33,17 +35,60 @@ export function loadResults(): CrawlResultRow[] {
   return loadAllResults();
 }
 
+export function websiteHost(url: string): string {
+  return hostOf(url);
+}
+
+export function loadCrawledHosts(): Set<string> {
+  const hosts = new Set<string>();
+  if (typeof window !== "undefined") {
+    try {
+      const raw = window.localStorage.getItem(CRAWLED_HOSTS_KEY);
+      const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+      if (Array.isArray(parsed)) {
+        for (const host of parsed) {
+          if (host) hosts.add(host);
+        }
+      }
+    } catch {
+      // ignore bad cache
+    }
+  }
+  for (const row of loadAllResults()) {
+    const host = websiteHost(row.website);
+    if (host) hosts.add(host);
+  }
+  return hosts;
+}
+
+export function markCrawledHosts(urls: string[]): Set<string> {
+  const hosts = loadCrawledHosts();
+  for (const url of urls) {
+    const host = websiteHost(url);
+    if (host) hosts.add(host);
+  }
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(CRAWLED_HOSTS_KEY, JSON.stringify([...hosts]));
+  }
+  return hosts;
+}
+
+export function alreadyCrawled(url: string, crawled = loadCrawledHosts()): boolean {
+  const host = websiteHost(url);
+  return Boolean(host && crawled.has(host));
+}
+
 export function saveCityResults(rows: CrawlResultRow[]): CrawlResultRow[] {
   if (typeof window === "undefined") return rows;
   const stamped = rows.map((row) => ({
     ...row,
     scannedAt: row.scannedAt || new Date().toISOString(),
   }));
-  const cities = new Set(stamped.map(cityKey));
-  const existing = loadAllResults().filter((row) => !cities.has(cityKey(row)));
+  markCrawledHosts(stamped.map((row) => row.website));
+  const existing = loadAllResults();
   const seen = new Set<string>();
   const merged: CrawlResultRow[] = [];
-  for (const row of [...existing, ...stamped]) {
+  for (const row of [...stamped, ...existing]) {
     const key = rowKey(row);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -80,5 +125,6 @@ export function listSavedCities(): Array<{
 export function clearAllResults(): void {
   if (typeof window === "undefined") return;
   window.localStorage.removeItem(ARCHIVE_STORAGE_KEY);
+  window.localStorage.removeItem(CRAWLED_HOSTS_KEY);
   window.sessionStorage.removeItem(RESULTS_STORAGE_KEY);
 }
