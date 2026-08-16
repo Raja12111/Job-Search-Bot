@@ -332,7 +332,7 @@ export async function searchClutchSource(city: CityRow): Promise<DiscoveredFirm[
     `https://clutch.co/agencies/seo?geoloc=true&location=${encodeURIComponent(cityLabel(city))}`,
     `https://clutch.co/${citySlug}/seo`,
   ];
-  const siteSearch = await searchSiteQuery(city, "clutch.co");
+  const siteSearch = await searchBestAgencyDirectory(city, "clutch.co");
   const pages = await mapPool(
     [...new Set([...urls, ...siteSearch.lists])].slice(0, 10),
     4,
@@ -348,9 +348,9 @@ export async function searchDesignRushSource(city: CityRow): Promise<DiscoveredF
   const urls = [
     `https://www.designrush.com/agency/search-engine-optimization/${stateSlug}/${citySlug}`,
     `https://www.designrush.com/agency/search-engine-optimization/${citySlug}`,
-    `https://www.designrush.com/agency/search?q=${encodeURIComponent(`SEO ${cityLabel(city)}`)}`,
+    `https://www.designrush.com/agency/search?q=${encodeURIComponent(`best SEO agency in ${cityLabel(city)}`)}`,
   ];
-  const siteSearch = await searchSiteQuery(city, "designrush.com");
+  const siteSearch = await searchBestAgencyDirectory(city, "designrush.com");
   const pages = await mapPool(
     [...new Set([...urls, ...siteSearch.lists])].slice(0, 10),
     4,
@@ -375,29 +375,66 @@ export async function searchOtherDirectorySource(city: CityRow): Promise<Discove
   return [...pages.flat(), ...extraQueries.flatMap((item) => item.firms)];
 }
 
+function bestAgencyQueries(city: CityRow, site?: string): string[] {
+  const place = cityLabel(city);
+  const phrases = [
+    `best SEO agency in ${place}`,
+    `best SEO agencies in ${place}`,
+    `top SEO companies in ${place}`,
+    `top SEO firms in ${place}`,
+  ];
+  if (!site) return phrases;
+  return phrases.map((phrase) => `${phrase} site:${site}`);
+}
+
+async function searchBestAgencyDirectory(
+  city: CityRow,
+  site: string
+): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
+  const queries = [...bestAgencyQueries(city), ...bestAgencyQueries(city, site)];
+  return searchQueries(city, queries, site);
+}
+
 async function searchSiteQuery(
   city: CityRow,
   site: string
 ): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
-  const query = `site:${site} SEO agencies ${cityLabel(city)}`;
-  const html = await fetchHtml(
-    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-    10000
-  );
+  return searchQueries(city, bestAgencyQueries(city, site), site);
+}
+
+async function searchQueries(
+  city: CityRow,
+  queries: string[],
+  site?: string
+): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
   const firms: DiscoveredFirm[] = [];
   const lists: string[] = [];
-  if (!html) return { firms, lists };
-  for (const match of html.matchAll(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-    const url = decodeDdgUrl(match[1] ?? "");
-    const title = decodeHtml(match[2] ?? "");
-    if (!url) continue;
-    if (isAgencyListPage(url) || isDirectoryHost(url)) {
-      lists.push(url);
-      continue;
-    }
-    const firm = firmFrom(city, title, url, viaForList(url));
-    if (firm) firms.push(firm);
-  }
+  await Promise.all(
+    queries.map(async (query) => {
+      const html = await fetchHtml(
+        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+        10000
+      );
+      if (!html) return;
+      for (const match of html.matchAll(
+        /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
+      )) {
+        const url = decodeDdgUrl(match[1] ?? "");
+        const title = decodeHtml(match[2] ?? "");
+        if (!url) continue;
+        if (site && !hostOf(url).includes(site) && !isDirectoryHost(url) && !isAgencyListPage(url)) {
+          continue;
+        }
+        if (site && isDirectoryHost(url) && !hostOf(url).includes(site)) continue;
+        if (isAgencyListPage(url) || isDirectoryHost(url)) {
+          if (!site || hostOf(url).includes(site)) lists.push(url);
+          continue;
+        }
+        const firm = firmFrom(city, title, url, site ? viaForList(`https://${site}/`) : "web");
+        if (firm) firms.push(firm);
+      }
+    })
+  );
   return { firms, lists };
 }
 

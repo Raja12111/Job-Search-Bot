@@ -173,11 +173,12 @@ async function searchSerperWeb(city: CityRow): Promise<{
     `SEO agency ${place}`,
     `SEO company ${place}`,
     `SEO firms near ${place}`,
-    `site:clutch.co SEO ${place}`,
-    `site:yelp.com SEO agency ${place}`,
-    `site:designrush.com SEO ${place}`,
-    `site:sortlist.com SEO ${place}`,
-    `site:semrush.com/agencies SEO ${place}`,
+    `best SEO agency in ${place} site:clutch.co`,
+    `best SEO agencies in ${place} site:clutch.co`,
+    `best SEO agency in ${place} site:designrush.com`,
+    `best SEO agencies in ${place} site:designrush.com`,
+    `best SEO agency in ${place} site:sortlist.com`,
+    `best SEO agencies in ${place} site:semrush.com`,
   ];
 
   const firms: DiscoveredFirm[] = [];
