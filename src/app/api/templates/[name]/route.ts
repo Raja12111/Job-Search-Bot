@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 
 const FILES: Record<string, string> = {
-  "us-cities.csv": `City,State
-New York,NY
-Los Angeles,CA
-Chicago,IL
-Houston,TX
-Phoenix,AZ
-Philadelphia,PA
-San Antonio,TX
-San Diego,CA
-Dallas,TX
-Austin,TX
+  "us-cities.csv": `City
+New York
+Los Angeles
+Chicago
+Houston
+Phoenix
+Philadelphia
+San Antonio
+San Diego
+Dallas
+Austin
 `,
   "uk-cities.csv": `City
 London

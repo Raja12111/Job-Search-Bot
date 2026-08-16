@@ -41,9 +41,7 @@ export function CityScanPanel() {
     }
     const rows = data.cities ?? [];
     setter(
-      country === "gb"
-        ? ["City", ...rows.map((row) => row.city)].join("\n")
-        : ["City,State", ...rows.map((row) => `${row.city},${row.state}`)].join("\n")
+      ["City", ...rows.map((row) => (row.state ? `${row.city}, ${row.state}` : row.city))].join("\n")
     );
   }
 
@@ -167,8 +165,8 @@ export function CityScanPanel() {
           finds SEO firms from Google Maps, Yelp, Clutch, DesignRush, Sortlist,
           and SEMrush — any local SEO firm with a website, not only domains
           that contain “SEO”. Then it opens careers / jobs / about pages and
-          keeps openings from the last 30 days. US sheet:{" "}
-          <code>City, State</code>. UK sheet: <code>City</code> only.
+          keeps openings from the last 30 days. US and UK sheets can be{" "}
+          <code>City</code> only. State is optional for the US.
         </p>
         <div className="mt-3 flex flex-wrap gap-3 text-sm">
           <a className="text-[#3ee0a2] underline" href="/api/templates/us-cities.csv">
@@ -184,7 +182,7 @@ export function CityScanPanel() {
         <SheetBox
           title="United States cities"
           text={usText}
-          placeholder={"City,State\nAustin,TX"}
+          placeholder={"City\nAustin\nDallas\nNew York"}
           onText={setUsText}
           onFile={(file) => uploadSheet(file, "us", setUsText).catch((err) => setError(err.message))}
         />

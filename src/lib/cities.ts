@@ -35,9 +35,9 @@ export function parseCityTable(text: string, fallbackCountry?: "us" | "gb"): Cit
     : 0;
   const stateIdx = hasHeader
     ? headerIndex(headers, ["state", "region", "county"])
-    : fallbackCountry === "gb"
-      ? -1
-      : 1;
+    : first.length > 1
+      ? 1
+      : -1;
   const countryIdx = hasHeader ? headerIndex(headers, ["country", "nation"]) : -1;
 
   const rows = hasHeader ? lines.slice(1) : lines;
@@ -46,9 +46,18 @@ export function parseCityTable(text: string, fallbackCountry?: "us" | "gb"): Cit
 
   for (const line of rows) {
     const cells = splitRow(line);
-    const city = (cells[cityIdx] ?? "").trim();
+    let city = (cells[cityIdx] ?? "").trim();
     if (!city || city.toLowerCase() === "city") continue;
-    const state = stateIdx >= 0 ? (cells[stateIdx] ?? "").trim() : "";
+    let state = stateIdx >= 0 ? (cells[stateIdx] ?? "").trim() : "";
+    if (!state && cells.length > cityIdx + 1) {
+      const maybe = (cells[cityIdx + 1] ?? "").trim();
+      if (/^[A-Za-z]{2}$/.test(maybe)) state = maybe.toUpperCase();
+    }
+    const cityState = city.match(/^(.+?),\s*([A-Za-z]{2})$/);
+    if (cityState?.[1] && cityState[2] && !state) {
+      city = cityState[1].trim();
+      state = cityState[2].toUpperCase();
+    }
     const countryRaw = countryIdx >= 0 ? (cells[countryIdx] ?? "") : "";
     const country = normalizeCountry(countryRaw) ?? fallbackCountry;
     if (!country) continue;
