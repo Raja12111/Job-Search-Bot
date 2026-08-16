@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { JobUrlList } from "@/components/JobUrlList";
 import { cityLabel } from "@/lib/cities";
 import { loadAllResults, saveCityResults } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
@@ -264,6 +265,37 @@ export function CityExplorePanel() {
           later from the Saved results menu — do not leave this page until you
           finish the next city.
         </p>
+      )}
+
+      {rows.some((row) => row.jobOpen) && (
+        <div className="grid gap-3 rounded-2xl border border-[#3ee0a2] bg-[#0d1b2e] p-4">
+          <h3 className="text-lg font-semibold text-[#3ee0a2]">
+            Positions found — open the URL for each one
+          </h3>
+          {rows
+            .filter((row) => row.jobOpen)
+            .map((row) => (
+              <article
+                key={`${row.website}-${row.company}`}
+                className="rounded-xl border border-[#1d3557] bg-[#07111f] px-4 py-3"
+              >
+                <div className="font-medium">{row.company}</div>
+                {row.website && (
+                  <a
+                    className="break-all text-xs text-[#93a4bb] underline"
+                    href={row.website}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {row.website}
+                  </a>
+                )}
+                <div className="mt-2">
+                  <JobUrlList jobs={row.jobs} />
+                </div>
+              </article>
+            ))}
+        </div>
       )}
     </section>
   );

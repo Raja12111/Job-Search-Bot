@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { JobUrlList } from "@/components/JobUrlList";
 import { toCsv } from "@/lib/cities";
 import { cityKey, clearAllResults, listSavedCities, loadAllResults } from "@/lib/results-store";
 import type { CrawlResultRow } from "@/lib/types";
@@ -32,21 +33,27 @@ export function ResultsPage() {
 
   function download() {
     const csv = toCsv(
-      visible.map((row) => ({
-        City: row.city,
-        State: row.country === "us" ? row.state ?? "" : "",
-        Firm: row.company,
-        Address: row.address ?? "",
-        FoundVia: row.foundVia ?? "",
-        Website: row.website,
-        Crawled: row.crawled ? "Yes" : "No",
-        CareerPages: row.careerPages.join(" | "),
-        JobOpen: row.jobOpen ? "Yes" : "No",
-        JobCount: String(row.jobCount),
-        LatestJob: row.latestJobTitle ?? "",
-        ApplyUrl: row.latestJobUrl ?? "",
-        Error: row.error ?? "",
-      }))
+      visible.flatMap((row) => {
+        const base = {
+          City: row.city,
+          State: row.country === "us" ? row.state ?? "" : "",
+          Firm: row.company,
+          Address: row.address ?? "",
+          FoundVia: row.foundVia ?? "",
+          Website: row.website,
+          CareerPage: row.careerPages.join(" | "),
+          JobOpen: row.jobOpen ? "Yes" : "No",
+        };
+        if (row.jobs.length === 0) {
+          return [{ ...base, JobTitle: "", JobUrl: "", Error: row.error ?? "" }];
+        }
+        return row.jobs.map((job) => ({
+          ...base,
+          JobTitle: job.title,
+          JobUrl: job.url,
+          Error: row.error ?? "",
+        }));
+      })
     );
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -164,7 +171,7 @@ export function ResultsPage() {
                     <th className="px-3 py-2">Website crawled</th>
                     <th className="px-3 py-2">Career / jobs page</th>
                     <th className="px-3 py-2">Job open</th>
-                    <th className="px-3 py-2">Openings</th>
+                    <th className="px-3 py-2">Positions and URLs</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -194,14 +201,19 @@ export function ResultsPage() {
                       </td>
                       <td className="px-3 py-2 text-[#93a4bb]">
                         {row.careerPages[0] ? (
-                          <a
-                            className="text-[#7aa2ff] underline"
-                            href={row.careerPages[0]}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Opened
-                          </a>
+                          <div className="grid gap-1">
+                            {row.careerPages.slice(0, 3).map((page) => (
+                              <a
+                                key={page}
+                                className="break-all text-[#7aa2ff] underline"
+                                href={page}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {page}
+                              </a>
+                            ))}
+                          </div>
                         ) : row.crawled ? (
                           "Checked homepage / about"
                         ) : (
@@ -220,18 +232,7 @@ export function ResultsPage() {
                         </span>
                       </td>
                       <td className="px-3 py-2">
-                        {row.jobOpen ? (
-                          <a
-                            className="text-[#7aa2ff] underline"
-                            href={row.latestJobUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            {row.jobCount} · {row.latestJobTitle}
-                          </a>
-                        ) : (
-                          "0"
-                        )}
+                        <JobUrlList jobs={row.jobs} />
                       </td>
                     </tr>
                   ))}
