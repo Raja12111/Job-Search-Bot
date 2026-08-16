@@ -288,7 +288,7 @@ export type ExploreStep = "google" | "clutch" | "designrush" | "directories";
 export async function exploreCityStep(
   city: CityRow,
   step: ExploreStep,
-  limit = 80
+  limit = 200
 ): Promise<DiscoveredFirm[]> {
   const byWebsite = new Map<string, DiscoveredFirm>();
   if (step === "google") {

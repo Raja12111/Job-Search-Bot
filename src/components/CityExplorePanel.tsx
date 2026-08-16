@@ -31,11 +31,11 @@ export function CityExplorePanel() {
     designrush: "wait",
     directories: "wait",
   });
-  const [stepCounts, setStepCounts] = useState<Record<StepId, number>>({
-    google: 0,
-    clutch: 0,
-    designrush: 0,
-    directories: 0,
+  const [stepCounts, setStepCounts] = useState<Record<StepId, { found: number; added: number }>>({
+    google: { found: 0, added: 0 },
+    clutch: { found: 0, added: 0 },
+    designrush: { found: 0, added: 0 },
+    directories: { found: 0, added: 0 },
   });
   const [rows, setRows] = useState<CrawlResultRow[]>([]);
 
@@ -50,7 +50,12 @@ export function CityExplorePanel() {
     setRows([]);
     setRunning(true);
     setStepState({ google: "wait", clutch: "wait", designrush: "wait", directories: "wait" });
-    setStepCounts({ google: 0, clutch: 0, designrush: 0, directories: 0 });
+    setStepCounts({
+      google: { found: 0, added: 0 },
+      clutch: { found: 0, added: 0 },
+      designrush: { found: 0, added: 0 },
+      directories: { found: 0, added: 0 },
+    });
 
     const found = new Map<string, DiscoveredFirm>();
     for (const step of STEPS) {
@@ -73,7 +78,7 @@ export function CityExplorePanel() {
           found.set(firm.website, { ...firm, foundVia: firm.foundVia || step.id });
           added += 1;
         }
-        setStepCounts((prev) => ({ ...prev, [step.id]: total }));
+        setStepCounts((prev) => ({ ...prev, [step.id]: { found: total, added } }));
         setStepState((prev) => ({ ...prev, [step.id]: total > 0 || added > 0 ? "done" : "empty" }));
       } catch (err) {
         setStepState((prev) => ({ ...prev, [step.id]: "empty" }));
@@ -166,8 +171,9 @@ export function CityExplorePanel() {
         <h2 className="text-2xl font-semibold">City explorer</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
           Give one city. The bot searches Google for SEO firms, then Clutch,
-          DesignRush, and other local directories. After that it opens each
-          company website and checks job openings.
+          DesignRush, and other local directories. The same agency often
+          appears on more than one list, so we crawl each website only once.
+          Then it checks job openings.
         </p>
       </div>
 
@@ -235,7 +241,8 @@ export function CityExplorePanel() {
             </span>
             <span className="text-sm text-[#93a4bb]">
               {stepState[step.id] === "run" && "Searching…"}
-              {stepState[step.id] === "done" && `${stepCounts[step.id]} firms`}
+              {stepState[step.id] === "done" &&
+                `${stepCounts[step.id].found} found · ${stepCounts[step.id].added} new`}
               {stepState[step.id] === "empty" && "None found"}
               {stepState[step.id] === "wait" && "Waiting"}
             </span>

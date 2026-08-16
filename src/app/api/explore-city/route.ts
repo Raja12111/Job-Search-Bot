@@ -24,7 +24,7 @@ export async function GET(request: Request) {
   }
 
   const row: CityRow = { city, state, country };
-  const firms = await exploreCityStep(row, step, 80);
+  const firms = await exploreCityStep(row, step, 200);
   return NextResponse.json({
     city,
     state,
