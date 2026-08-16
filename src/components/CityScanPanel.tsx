@@ -2,13 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { cityLabel, parseCityTable } from "@/lib/cities";
 import { saveCityResults } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
 
 export function CityScanPanel() {
-  const router = useRouter();
   const [usText, setUsText] = useState("");
   const [ukText, setUkText] = useState("");
   const [cities, setCities] = useState<CityRow[]>([]);
@@ -153,7 +151,9 @@ export function CityScanPanel() {
     saveCityResults(collected);
     setRunning(false);
     setCurrent("");
-    if (collected.length > 0) router.push("/results");
+    if (collected.length > 0) {
+      setCurrent("Done. Stay here or open Saved results when you want to review.");
+    }
   }
 
   return (

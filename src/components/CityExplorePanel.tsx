@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { cityLabel } from "@/lib/cities";
 import { loadAllResults, saveCityResults } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
@@ -36,6 +35,8 @@ export function CityExplorePanel() {
   });
   const [rows, setRows] = useState<CrawlResultRow[]>([]);
   const [savedCount, setSavedCount] = useState(0);
+  const [doneCity, setDoneCity] = useState("");
+  const [doneCount, setDoneCount] = useState(0);
 
   useEffect(() => {
     setSavedCount(loadAllResults().length);
@@ -49,6 +50,8 @@ export function CityExplorePanel() {
     }
     const row: CityRow = { city: cityName, state: "", country };
     setError("");
+    setDoneCity("");
+    setDoneCount(0);
     setRows([]);
     setRunning(true);
     setStepState({ google: "wait", clutch: "wait", designrush: "wait", directories: "wait" });
@@ -108,8 +111,7 @@ export function CityExplorePanel() {
       });
       setRows(collected);
       setSavedCount(saveCityResults(collected).length);
-      setRunning(false);
-      setCurrent("Saved. Enter the next city when you are ready.");
+      finishCity(cityName, collected.length);
       return;
     }
 
@@ -161,8 +163,15 @@ export function CityExplorePanel() {
     }
 
     setSavedCount(saveCityResults(collected).length);
+    finishCity(cityName, collected.length);
+  }
+
+  function finishCity(cityName: string, count: number) {
     setRunning(false);
-    setCurrent("Saved. Enter the next city when you are ready.");
+    setCurrent("");
+    setDoneCity(cityName);
+    setDoneCount(count);
+    setCity("");
   }
 
   return (
@@ -201,6 +210,16 @@ export function CityExplorePanel() {
         </label>
       </div>
 
+      {doneCity && !running && (
+        <div className="rounded-2xl border border-[#3ee0a2] bg-[#12382c] px-5 py-4">
+          <p className="text-lg font-semibold text-[#3ee0a2]">Done — {doneCity} is saved</p>
+          <p className="mt-1 text-sm text-[#93a4bb]">
+            {doneCount} website{doneCount === 1 ? "" : "s"} checked. Stay on this
+            page and type the next city above, then click Explore this city.
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
@@ -211,14 +230,6 @@ export function CityExplorePanel() {
           {running ? "Exploring city…" : "Explore this city"}
         </button>
         <span className="text-sm text-[#93a4bb]">{current}</span>
-        {savedCount > 0 && (
-          <Link
-            href="/results"
-            className="rounded-xl border border-[#3ee0a2] px-4 py-2 text-sm font-semibold text-[#3ee0a2]"
-          >
-            Saved results ({savedCount})
-          </Link>
-        )}
       </div>
 
       <ol className="grid gap-2 sm:grid-cols-2">
@@ -247,12 +258,11 @@ export function CityExplorePanel() {
         </p>
       )}
 
-      {rows.length > 0 && (
+      {savedCount > 0 && (
         <p className="text-sm text-[#93a4bb]">
-          {rows.length} website{rows.length === 1 ? "" : "s"} checked.{" "}
-          <Link href="/results" className="text-[#3ee0a2] underline">
-            Open full results page
-          </Link>
+          {savedCount} firm{savedCount === 1 ? "" : "s"} saved across cities. Review
+          later from the Saved results menu — do not leave this page until you
+          finish the next city.
         </p>
       )}
     </section>
