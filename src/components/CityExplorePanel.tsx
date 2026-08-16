@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { JobUrlList } from "@/components/JobUrlList";
 import { cityLabel } from "@/lib/cities";
 import { alreadyCrawled, loadAllResults, loadCrawledHosts, saveCityResults } from "@/lib/results-store";
@@ -15,6 +15,13 @@ const STEPS = [
 
 type StepId = (typeof STEPS)[number]["id"];
 type StepState = "wait" | "run" | "done" | "empty";
+type QueueStatus = "wait" | "run" | "done";
+type QueueItem = {
+  id: string;
+  city: string;
+  country: "us" | "gb";
+  status: QueueStatus;
+};
 
 async function fetchJson<T>(url: string, timeoutMs: number): Promise<{ ok: boolean; data: T }> {
   const controller = new AbortController();
@@ -37,10 +44,17 @@ async function fetchJson<T>(url: string, timeoutMs: number): Promise<{ ok: boole
   }
 }
 
+function queueKey(city: string, country: "us" | "gb"): string {
+  return `${country}|${city.trim().toLowerCase()}`;
+}
+
 export function CityExplorePanel() {
   const [city, setCity] = useState("");
   const [country, setCountry] = useState<"us" | "gb">("us");
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const queueRef = useRef<QueueItem[]>([]);
   const [running, setRunning] = useState(false);
+  const runningRef = useRef(false);
   const [current, setCurrent] = useState("");
   const [error, setError] = useState("");
   const [stepState, setStepState] = useState<Record<StepId, StepState>>({
@@ -66,20 +80,46 @@ export function CityExplorePanel() {
     setSavedCount(loadAllResults().length);
   }, []);
 
-  async function startExplore() {
-    const cityName = city.trim();
+  function writeQueue(next: QueueItem[]) {
+    queueRef.current = next;
+    setQueue(next);
+  }
+
+  function addCityToQueue(name = city, nextCountry = country): boolean {
+    const cityName = name.trim();
     if (!cityName) {
-      setError("Enter one city to explore.");
-      return;
+      setError("Enter a city to add.");
+      return false;
     }
-    const row: CityRow = { city: cityName, state: "", country };
+    const key = queueKey(cityName, nextCountry);
+    if (queueRef.current.some((item) => queueKey(item.city, item.country) === key)) {
+      setError(`${cityName} is already in the list.`);
+      return false;
+    }
     setError("");
+    writeQueue([
+      ...queueRef.current,
+      { id: `${key}-${Date.now()}`, city: cityName, country: nextCountry, status: "wait" },
+    ]);
+    setCity("");
+    return true;
+  }
+
+  function removeCity(id: string) {
+    writeQueue(queueRef.current.filter((item) => item.id !== id || item.status === "run"));
+  }
+
+  function markQueue(id: string, status: QueueStatus) {
+    writeQueue(queueRef.current.map((item) => (item.id === id ? { ...item, status } : item)));
+  }
+
+  async function exploreOneCity(item: QueueItem): Promise<void> {
+    const row: CityRow = { city: item.city, state: "", country: item.country };
     setDoneCity("");
     setDoneCount(0);
     setDoneSkipped(0);
     setProgress({ done: 0, total: 0 });
     setRows([]);
-    setRunning(true);
     setStepState({ google: "wait", clutch: "wait", designrush: "wait", directories: "wait" });
     setStepCounts({
       google: { found: 0, added: 0 },
@@ -149,13 +189,16 @@ export function CityExplorePanel() {
         });
         setRows(collected);
         setSavedCount(saveCityResults(collected).length);
+        finishCity(item.city, collected.length, skipped);
         return;
       }
 
       setProgress({ done: 0, total: firms.length });
       for (let start = 0; start < firms.length; start += 6) {
         const batch = firms.slice(start, start + 6);
-        setCurrent(`Checking jobs ${start + 1}–${Math.min(start + batch.length, firms.length)} of ${firms.length}`);
+        setCurrent(
+          `Checking jobs ${start + 1}–${Math.min(start + batch.length, firms.length)} of ${firms.length}`
+        );
         const scanned = await Promise.all(
           batch.map(async (firm) => {
             const siteParams = new URLSearchParams({
@@ -224,42 +267,68 @@ export function CityExplorePanel() {
     } finally {
       if (collected.length > 0) {
         setSavedCount(saveCityResults(collected).length);
-        finishCity(cityName, collected.length, skipped);
-      } else {
-        setRunning(false);
-        setCurrent("");
+        finishCity(item.city, collected.length, skipped);
       }
     }
   }
 
+  async function startExplore() {
+    if (city.trim()) addCityToQueue();
+    if (queueRef.current.every((item) => item.status !== "wait") && !city.trim()) {
+      if (queueRef.current.length === 0) setError("Add at least one city.");
+      return;
+    }
+    if (runningRef.current) return;
+    runningRef.current = true;
+    setRunning(true);
+    setError("");
+    try {
+      while (true) {
+        const next = queueRef.current.find((item) => item.status === "wait");
+        if (!next) break;
+        markQueue(next.id, "run");
+        await exploreOneCity(next);
+        markQueue(next.id, "done");
+      }
+    } finally {
+      runningRef.current = false;
+      setRunning(false);
+      setCurrent("");
+    }
+  }
+
   function finishCity(cityName: string, count: number, skippedCount = 0) {
-    setRunning(false);
-    setCurrent("");
     setDoneCity(cityName);
     setDoneCount(count);
     setDoneSkipped(skippedCount);
-    setCity("");
   }
+
+  const waiting = queue.filter((item) => item.status === "wait").length;
+  const nextCity = queue.find((item) => item.status === "wait");
 
   return (
     <section className="grid gap-6">
       <div className="rounded-3xl border border-[#1d3557] bg-[#0d1b2e]/80 p-5">
         <h2 className="text-2xl font-semibold">City explorer</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
-          Give one city. The bot searches Google for SEO firms, then Clutch,
-          DesignRush, and other local directories. Each website is crawled
-          once — later cities skip sites already checked, including tools
-          like Nutshell and TeamAI. Each city is saved. Use Saved results to
-          review any city and filter to job openings only.
+          Add as many cities as you want. The bot still goes one city at a
+          time: search, crawl, show Done, then start the next city. Each
+          website is crawled once — later cities skip sites already checked.
         </p>
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4 sm:grid-cols-3">
-        <label className="grid gap-1 sm:col-span-2">
+      <div className="grid gap-3 rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4 sm:grid-cols-[1fr_160px_auto]">
+        <label className="grid gap-1">
           <span className="text-sm text-[#93a4bb]">City</span>
           <input
             value={city}
             onChange={(event) => setCity(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addCityToQueue();
+              }
+            }}
             placeholder="Austin"
             className="rounded-xl border border-[#1d3557] bg-[#07111f] px-3 py-2 outline-none focus:border-[#3ee0a2]"
           />
@@ -275,17 +344,70 @@ export function CityExplorePanel() {
             <option value="gb">United Kingdom</option>
           </select>
         </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={() => addCityToQueue()}
+            className="w-full rounded-xl border border-[#3ee0a2] px-4 py-2 font-semibold text-[#3ee0a2]"
+          >
+            Add city
+          </button>
+        </div>
       </div>
 
-      {doneCity && !running && (
+      {queue.length > 0 && (
+        <ol className="grid gap-2 rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4">
+          {queue.map((item, index) => (
+            <li
+              key={item.id}
+              className="flex items-center justify-between gap-3 rounded-xl border border-[#1d3557] bg-[#07111f] px-4 py-3"
+            >
+              <span>
+                {index + 1}. {item.city}{" "}
+                <span className="text-xs text-[#93a4bb]">
+                  {item.country === "gb" ? "UK" : "US"}
+                </span>
+              </span>
+              <span className="flex items-center gap-3 text-sm">
+                <span
+                  className={
+                    item.status === "run"
+                      ? "text-[#3ee0a2]"
+                      : item.status === "done"
+                        ? "text-[#93a4bb]"
+                        : "text-[#7aa2ff]"
+                  }
+                >
+                  {item.status === "run" && "Crawling now"}
+                  {item.status === "done" && "Done"}
+                  {item.status === "wait" && "Waiting"}
+                </span>
+                {item.status === "wait" && (
+                  <button
+                    type="button"
+                    onClick={() => removeCity(item.id)}
+                    className="text-xs text-[#d4a0b0] underline"
+                  >
+                    Remove
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {doneCity && (
         <div className="rounded-2xl border border-[#3ee0a2] bg-[#12382c] px-5 py-4">
           <p className="text-lg font-semibold text-[#3ee0a2]">Done — {doneCity} is saved</p>
           <p className="mt-1 text-sm text-[#93a4bb]">
             {doneCount} website{doneCount === 1 ? "" : "s"} checked
-            {doneSkipped > 0
-              ? `, ${doneSkipped} already crawled skipped`
-              : ""}. Stay on this page and type the next city above, then click
-            Explore this city.
+            {doneSkipped > 0 ? `, ${doneSkipped} already crawled skipped` : ""}.
+            {running && nextCity
+              ? ` Next: ${nextCity.city}. Stay on this page.`
+              : waiting > 0
+                ? " Add more cities or click Explore to continue one by one."
+                : " Stay on this page and add the next city when you are ready."}
           </p>
         </div>
       )}
@@ -293,11 +415,15 @@ export function CityExplorePanel() {
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={running}
+          disabled={running && waiting === 0}
           onClick={() => void startExplore()}
           className="rounded-xl bg-[#3ee0a2] px-5 py-2 font-semibold text-[#07111f] disabled:opacity-60"
         >
-          {running ? "Exploring city…" : "Explore this city"}
+          {running
+            ? `Exploring ${queue.find((item) => item.status === "run")?.city ?? "city"}…`
+            : waiting > 1
+              ? `Explore ${waiting} cities, one by one`
+              : "Explore this city"}
         </button>
         <span className="text-sm text-[#93a4bb]">
           {current}
@@ -334,8 +460,8 @@ export function CityExplorePanel() {
       {savedCount > 0 && (
         <p className="text-sm text-[#93a4bb]">
           {savedCount} firm{savedCount === 1 ? "" : "s"} saved across cities. Review
-          later from the Saved results menu — do not leave this page until you
-          finish the next city.
+          later from the Saved results menu — stay on this page while cities
+          run one by one.
         </p>
       )}
 
