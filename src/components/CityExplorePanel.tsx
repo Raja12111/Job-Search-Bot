@@ -18,7 +18,6 @@ type StepState = "wait" | "run" | "done" | "empty";
 
 export function CityExplorePanel() {
   const [city, setCity] = useState("");
-  const [state, setState] = useState("");
   const [country, setCountry] = useState<"us" | "gb">("us");
   const [running, setRunning] = useState(false);
   const [current, setCurrent] = useState("");
@@ -48,7 +47,7 @@ export function CityExplorePanel() {
       setError("Enter one city to explore.");
       return;
     }
-    const row: CityRow = { city: cityName, state: state.trim(), country };
+    const row: CityRow = { city: cityName, state: "", country };
     setError("");
     setRows([]);
     setRunning(true);
@@ -179,7 +178,7 @@ export function CityExplorePanel() {
         </p>
       </div>
 
-      <div className="grid gap-3 rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4 sm:grid-cols-4">
+      <div className="grid gap-3 rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4 sm:grid-cols-3">
         <label className="grid gap-1 sm:col-span-2">
           <span className="text-sm text-[#93a4bb]">City</span>
           <input
@@ -187,16 +186,6 @@ export function CityExplorePanel() {
             onChange={(event) => setCity(event.target.value)}
             placeholder="Austin"
             className="rounded-xl border border-[#1d3557] bg-[#07111f] px-3 py-2 outline-none focus:border-[#3ee0a2]"
-          />
-        </label>
-        <label className="grid gap-1">
-          <span className="text-sm text-[#93a4bb]">State (optional)</span>
-          <input
-            value={state}
-            onChange={(event) => setState(event.target.value)}
-            placeholder="TX"
-            disabled={country === "gb"}
-            className="rounded-xl border border-[#1d3557] bg-[#07111f] px-3 py-2 outline-none focus:border-[#3ee0a2] disabled:opacity-50"
           />
         </label>
         <label className="grid gap-1">
