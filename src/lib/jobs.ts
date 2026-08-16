@@ -14,18 +14,28 @@ function includesQuery(haystack: string, query: string): boolean {
   return q.split(/\s+/).every((part) => text.includes(part));
 }
 
+const SEO_TITLE =
+  /\bseo\b|search engine optimi[sz]ation|\baeo\b|\bgeo\b|organic search|search specialist|search manager|search strategist|search analyst|search consultant|search director|search marketing|link[- ]build|on[- ]page|off[- ]page|technical search|local search|\bserp\b|seo copy|content seo|organic growth|organic acquisition/;
+
+const SEO_HINT =
+  /\bseo\b|search engine optimi|organic search|link[- ]build|technical seo|local seo|on[- ]page seo|off[- ]page|content seo|\bserp\b|\baeo\b/;
+
+const NOT_SEO_ONLY =
+  /\b(software engineer|full[- ]stack|back[- ]end|front[- ]stack|frontend engineer|backend engineer|devops|data engineer|ppc only|paid social|paid media manager|social media manager|influencer|graphic designer|receptionist|bookkeeper)\b/;
+
 export function isSeoRole(job: Job): boolean {
   const title = normalize(job.title);
-  if (
-    title.includes("seo") ||
-    title.includes("search engine optimization") ||
-    title.includes("search engine optimisation") ||
-    title.includes("aeo")
-  ) {
-    return true;
+  const description = normalize(job.description);
+  const tags = job.tags.map(normalize).join(" ");
+  const blob = `${title} ${description} ${tags}`;
+
+  if (SEO_TITLE.test(title)) {
+    return !NOT_SEO_ONLY.test(title) || SEO_HINT.test(title);
   }
-  const tags = job.tags.map(normalize);
-  return tags.length > 0 && tags.length <= 3 && tags.includes("seo");
+  if (NOT_SEO_ONLY.test(title) && !SEO_HINT.test(title)) return false;
+  if (SEO_HINT.test(blob)) return true;
+  if (tags.split(/\s+/).includes("seo")) return true;
+  return false;
 }
 
 function jobMatches(job: Job, input: SearchInput): boolean {
