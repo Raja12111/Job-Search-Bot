@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import { JobUrlList } from "@/components/JobUrlList";
 import { cityLabel } from "@/lib/cities";
 import { alreadyCrawled, loadAllResults, loadCrawledHosts, saveCityResults } from "@/lib/results-store";
+import { US_CITY_BATCH } from "@/lib/us-city-batch";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
+
+const QUEUE_STORAGE_KEY = "job-search-bot-city-queue";
 
 const STEPS = [
   { id: "google", label: "Google search" },
@@ -19,6 +22,7 @@ type QueueStatus = "wait" | "run" | "done";
 type QueueItem = {
   id: string;
   city: string;
+  state?: string;
   country: "us" | "gb";
   status: QueueStatus;
 };
@@ -46,6 +50,44 @@ async function fetchJson<T>(url: string, timeoutMs: number): Promise<{ ok: boole
 
 function queueKey(city: string, country: "us" | "gb"): string {
   return `${country}|${city.trim().toLowerCase()}`;
+}
+
+function savedCityNames(): Set<string> {
+  return new Set(loadAllResults().map((row) => row.city.trim().toLowerCase()));
+}
+
+function presetItems(): QueueItem[] {
+  const saved = savedCityNames();
+  return US_CITY_BATCH.map((item) => ({
+    id: queueKey(item.city, "us"),
+    city: item.city,
+    state: item.state,
+    country: "us",
+    status: saved.has(item.city.toLowerCase()) ? "done" : "wait",
+  }));
+}
+
+function mergePreset(existing: QueueItem[]): QueueItem[] {
+  const seen = new Set(existing.map((item) => queueKey(item.city, item.country)));
+  const extra = presetItems().filter((item) => !seen.has(queueKey(item.city, item.country)));
+  return [...existing, ...extra];
+}
+
+function readSavedQueue(): QueueItem[] {
+  if (typeof window === "undefined") return presetItems();
+  try {
+    const raw = window.localStorage.getItem(QUEUE_STORAGE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as QueueItem[]) : [];
+    const saved = Array.isArray(parsed)
+      ? parsed.map((item) => ({
+          ...item,
+          status: item.status === "run" ? "wait" : item.status,
+        }))
+      : [];
+    return mergePreset(saved);
+  } catch {
+    return presetItems();
+  }
 }
 
 export function CityExplorePanel() {
@@ -78,11 +120,17 @@ export function CityExplorePanel() {
 
   useEffect(() => {
     setSavedCount(loadAllResults().length);
+    const loaded = readSavedQueue();
+    queueRef.current = loaded;
+    setQueue(loaded);
   }, []);
 
   function writeQueue(next: QueueItem[]) {
     queueRef.current = next;
     setQueue(next);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(next));
+    }
   }
 
   function addCityToQueue(name = city, nextCountry = country): boolean {
@@ -114,7 +162,7 @@ export function CityExplorePanel() {
   }
 
   async function exploreOneCity(item: QueueItem): Promise<void> {
-    const row: CityRow = { city: item.city, state: "", country: item.country };
+    const row: CityRow = { city: item.city, state: item.state ?? "", country: item.country };
     setDoneCity("");
     setDoneCount(0);
     setDoneSkipped(0);
@@ -311,9 +359,9 @@ export function CityExplorePanel() {
       <div className="rounded-3xl border border-[#1d3557] bg-[#0d1b2e]/80 p-5">
         <h2 className="text-2xl font-semibold">City explorer</h2>
         <p className="mt-2 max-w-3xl text-[#93a4bb]">
-          Add as many cities as you want. The bot still goes one city at a
-          time: search, crawl, show Done, then start the next city. Each
-          website is crawled once — later cities skip sites already checked.
+          Nashville through Modesto are already in the list. The bot still
+          goes one city at a time: search, crawl, show Done, then start the
+          next city. Each website is crawled once.
         </p>
       </div>
 
@@ -356,14 +404,15 @@ export function CityExplorePanel() {
       </div>
 
       {queue.length > 0 && (
-        <ol className="grid gap-2 rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4">
+        <ol className="grid max-h-80 gap-2 overflow-y-auto rounded-2xl border border-[#1d3557] bg-[#0d1b2e] p-4">
           {queue.map((item, index) => (
             <li
               key={item.id}
               className="flex items-center justify-between gap-3 rounded-xl border border-[#1d3557] bg-[#07111f] px-4 py-3"
             >
               <span>
-                {index + 1}. {item.city}{" "}
+                {index + 1}. {item.city}
+                {item.state ? `, ${item.state}` : ""}{" "}
                 <span className="text-xs text-[#93a4bb]">
                   {item.country === "gb" ? "UK" : "US"}
                 </span>
