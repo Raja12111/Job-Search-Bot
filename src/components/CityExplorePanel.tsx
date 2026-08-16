@@ -66,14 +66,15 @@ export function CityExplorePanel() {
         const response = await fetch(`/api/explore-city?${params.toString()}`);
         const data = (await response.json()) as { firms?: DiscoveredFirm[]; error?: string };
         if (!response.ok) throw new Error(data.error || `${step.label} failed`);
+        const total = data.firms?.length ?? 0;
         let added = 0;
         for (const firm of data.firms ?? []) {
           if (found.has(firm.website)) continue;
           found.set(firm.website, { ...firm, foundVia: firm.foundVia || step.id });
           added += 1;
         }
-        setStepCounts((prev) => ({ ...prev, [step.id]: added }));
-        setStepState((prev) => ({ ...prev, [step.id]: added > 0 ? "done" : "empty" }));
+        setStepCounts((prev) => ({ ...prev, [step.id]: total }));
+        setStepState((prev) => ({ ...prev, [step.id]: total > 0 || added > 0 ? "done" : "empty" }));
       } catch (err) {
         setStepState((prev) => ({ ...prev, [step.id]: "empty" }));
         setError(err instanceof Error ? err.message : "Explore failed");

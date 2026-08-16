@@ -21,6 +21,8 @@ export const DIRECTORY_HOSTS = [
   "expertise.com",
   "topdevelopers.co",
   "seo.com",
+  "builtinaustin.com",
+  "seranking.com",
 ];
 
 const SKIP_HOSTS = [
@@ -87,6 +89,16 @@ const SKIP_HOSTS = [
   "blog.google",
   "adobe.com",
   "pagespeed.web.dev",
+  "bestbuy.com",
+  "merriam-webster.com",
+  "dictionary.com",
+  "cambridge.org",
+  "thefreedictionary.com",
+  "wordreference.com",
+  "britannica.com",
+  "wiktionary.org",
+  "bestsecret.com",
+  "yourdictionary.com",
 ];
 
 export function hostOf(url: string): string {

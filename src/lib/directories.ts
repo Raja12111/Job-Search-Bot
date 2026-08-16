@@ -137,7 +137,7 @@ export function isAgencyListPage(url: string): boolean {
     }
   })();
   if (
-    /expertise\.com|goodfirms\.co|topdevelopers\.co|designrush\.com|sortlist\.com|clutch\.co|semrush\.com|yellowpages\.com|yell\.com|yelp\.|seo\.com/.test(
+    /expertise\.com|goodfirms\.co|topdevelopers\.co|designrush\.com|sortlist\.com|clutch\.co|semrush\.com|yellowpages\.com|yell\.com|yelp\.|seo\.com|builtinaustin\.com|seranking\.com/.test(
       host
     )
   ) {
@@ -229,6 +229,8 @@ function viaForList(url: string): string {
   if (host.includes("goodfirms.co")) return "goodfirms";
   if (host.includes("topdevelopers.co")) return "topdevelopers";
   if (host.includes("seo.com")) return "seo.com";
+  if (host.includes("builtinaustin.com")) return "directory";
+  if (host.includes("seranking.com")) return "directory";
   return "directory";
 }
 
@@ -339,7 +341,11 @@ export async function searchClutchSource(city: CityRow): Promise<DiscoveredFirm[
     (url) => firmsFromListPage(city, url, "clutch")
   );
   const recovered = await recoverProfileNames(city, siteSearch.lists, "clutch");
-  return [...pages.flat(), ...siteSearch.firms, ...recovered];
+  const found = [...pages.flat(), ...siteSearch.firms, ...recovered];
+  if (found.length < 3) {
+    found.push(...(await fallbackBestAgencyListicles(city, "clutch")));
+  }
+  return found;
 }
 
 export async function searchDesignRushSource(city: CityRow): Promise<DiscoveredFirm[]> {
@@ -357,7 +363,17 @@ export async function searchDesignRushSource(city: CityRow): Promise<DiscoveredF
     (url) => firmsFromListPage(city, url, "designrush")
   );
   const recovered = await recoverProfileNames(city, siteSearch.lists, "designrush");
-  return [...pages.flat(), ...siteSearch.firms, ...recovered];
+  const found = [...pages.flat(), ...siteSearch.firms, ...recovered];
+  if (found.length < 3) {
+    found.push(...(await fallbackBestAgencyListicles(city, "designrush")));
+  }
+  return found;
+}
+
+async function fallbackBestAgencyListicles(city: CityRow, foundVia: string): Promise<DiscoveredFirm[]> {
+  const urls = knownListUrls(city).filter((url) => !/clutch\.co|designrush\.com/.test(url));
+  const pages = await mapPool(urls.slice(0, 6), 4, (url) => firmsFromListPage(city, url, foundVia));
+  return pages.flat();
 }
 
 export async function searchOtherDirectorySource(city: CityRow): Promise<DiscoveredFirm[]> {
@@ -387,54 +403,110 @@ function bestAgencyQueries(city: CityRow, site?: string): string[] {
   return phrases.map((phrase) => `${phrase} site:${site}`);
 }
 
+function isEmptySearchPage(html: string): boolean {
+  return /<title>\s*DuckDuckGo\s*<\/title>/i.test(html) && !/result__a|uddg=/.test(html);
+}
+
+async function fetchSearchHtml(query: string): Promise<string | null> {
+  const urls = [
+    `https://search.brave.com/search?q=${encodeURIComponent(query)}`,
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+  ];
+  if (!/^best\s+seo/i.test(query)) {
+    urls.push(
+      `https://www.bing.com/search?q=${encodeURIComponent(query)}&cc=US&setlang=en-US&mkt=en-US`
+    );
+  }
+  for (const url of urls) {
+    const html = await fetchHtml(url, 10000);
+    if (!html || isEmptySearchPage(html)) continue;
+    if (/clutch\.co|designrush\.com|result__a|uddg=/i.test(html)) return html;
+  }
+  return null;
+}
+
+function extractSearchLinks(html: string): Array<{ url: string; title: string }> {
+  const out: Array<{ url: string; title: string }> = [];
+  const seen = new Set<string>();
+  const push = (raw: string, title: string) => {
+    let url = decodeDdgUrl(raw);
+    if (/bing\.com\/ck\//i.test(url)) url = decodeBingUrl(url);
+    if (!url || !/^https?:/i.test(url) || seen.has(url)) return;
+    if (/brave\.com|duckduckgo\.com|bing\.com|microsoft\.com/.test(hostOf(url))) return;
+    seen.add(url);
+    out.push({ url, title: decodeHtml(title) });
+  };
+
+  for (const match of html.matchAll(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    push(match[1] ?? "", match[2] ?? "");
+  }
+  for (const match of html.matchAll(/<h2[^>]*>\s*<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    push(match[1] ?? "", match[2] ?? "");
+  }
+  for (const match of html.matchAll(/<a[^>]+href="(https?:\/\/(?:www\.)?(?:clutch\.co|designrush\.com)[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    push(match[1] ?? "", match[2] ?? "");
+  }
+  for (const match of html.matchAll(/<a[^>]+href="(https?:\/\/(?!search\.brave)[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const title = decodeHtml(match[2] ?? "");
+    if (title.length < 8 || title.length > 140) continue;
+    if (!/seo|agency|clutch|designrush/i.test(`${title} ${match[1]}`)) continue;
+    push(match[1] ?? "", title);
+  }
+  return out;
+}
+
+function isAgencySearchHit(title: string, url: string): boolean {
+  const blob = `${title} ${url}`.toLowerCase();
+  if (
+    /dictionary|merriam|bestbuy|wiktionary|britannica|wordreference|freedictionary|bestsecret|cambridge\.org/.test(
+      blob
+    )
+  ) {
+    return false;
+  }
+  return /seo|agency|digital marketing|search engine|clutch|designrush/.test(blob);
+}
+
 async function searchBestAgencyDirectory(
   city: CityRow,
   site: string
 ): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
-  const queries = [...bestAgencyQueries(city), ...bestAgencyQueries(city, site)];
-  return searchQueries(city, queries, site);
+  const queries = [...bestAgencyQueries(city).slice(0, 2), ...bestAgencyQueries(city, site).slice(0, 2)];
+  return searchQueries(city, queries, site, true);
 }
 
 async function searchSiteQuery(
   city: CityRow,
   site: string
 ): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
-  return searchQueries(city, bestAgencyQueries(city, site), site);
+  return searchQueries(city, bestAgencyQueries(city, site).slice(0, 2), site, false);
 }
 
 async function searchQueries(
   city: CityRow,
   queries: string[],
-  site?: string
+  site?: string,
+  keepAgencySites = false
 ): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
   const firms: DiscoveredFirm[] = [];
   const lists: string[] = [];
-  await Promise.all(
-    queries.map(async (query) => {
-      const html = await fetchHtml(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-        10000
-      );
-      if (!html) return;
-      for (const match of html.matchAll(
-        /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
-      )) {
-        const url = decodeDdgUrl(match[1] ?? "");
-        const title = decodeHtml(match[2] ?? "");
-        if (!url) continue;
-        if (site && !hostOf(url).includes(site) && !isDirectoryHost(url) && !isAgencyListPage(url)) {
-          continue;
-        }
-        if (site && isDirectoryHost(url) && !hostOf(url).includes(site)) continue;
+  for (const query of queries) {
+    const html = await fetchSearchHtml(query);
+    if (html) {
+      for (const item of extractSearchLinks(html)) {
+        const url = item.url;
+        const title = item.title;
         if (isAgencyListPage(url) || isDirectoryHost(url)) {
-          if (!site || hostOf(url).includes(site)) lists.push(url);
+          if (!site || hostOf(url).includes(site) || keepAgencySites) lists.push(url);
           continue;
         }
+        if (site && !keepAgencySites && !hostOf(url).includes(site)) continue;
+        if (keepAgencySites && !isAgencySearchHit(title, url)) continue;
         const firm = firmFrom(city, title, url, site ? viaForList(`https://${site}/`) : "web");
         if (firm) firms.push(firm);
       }
-    })
-  );
+    }
+  }
   return { firms, lists };
 }
 
@@ -445,17 +517,14 @@ async function recoverProfileNames(
 ): Promise<DiscoveredFirm[]> {
   const names = [...new Set(urls.map(nameFromProfileUrl).filter(Boolean))].slice(0, 8);
   const batches = await mapPool(names, 4, async (name) => {
-    const html = await fetchHtml(
-      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`"${name}" SEO agency ${city.city} official website`)}`,
-      8000
+    const html = await fetchSearchHtml(
+      `"${name}" SEO agency ${city.city} official website`
     );
     if (!html) return [] as DiscoveredFirm[];
     const out: DiscoveredFirm[] = [];
-    for (const match of html.matchAll(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
-      const url = decodeDdgUrl(match[1] ?? "");
-      const title = decodeHtml(match[2] ?? "");
-      if (!url || isDirectoryHost(url) || isAgencyListPage(url)) continue;
-      const firm = firmFrom(city, title || name, url, foundVia);
+    for (const item of extractSearchLinks(html)) {
+      if (isDirectoryHost(item.url) || isAgencyListPage(item.url)) continue;
+      const firm = firmFrom(city, item.title || name, item.url, foundVia);
       if (firm) out.push(firm);
     }
     return out.slice(0, 2);
