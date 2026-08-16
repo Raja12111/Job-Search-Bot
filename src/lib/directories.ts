@@ -408,20 +408,18 @@ function isEmptySearchPage(html: string): boolean {
 }
 
 async function fetchSearchHtml(query: string): Promise<string | null> {
-  const urls = [
+  const brave = await fetchHtml(
     `https://search.brave.com/search?q=${encodeURIComponent(query)}`,
+    7000
+  );
+  if (brave && !isEmptySearchPage(brave) && /seo|agency|clutch|designrush|result__a/i.test(brave)) {
+    return brave;
+  }
+  const ddg = await fetchHtml(
     `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-  ];
-  if (!/^best\s+seo/i.test(query)) {
-    urls.push(
-      `https://www.bing.com/search?q=${encodeURIComponent(query)}&cc=US&setlang=en-US&mkt=en-US`
-    );
-  }
-  for (const url of urls) {
-    const html = await fetchHtml(url, 10000);
-    if (!html || isEmptySearchPage(html)) continue;
-    if (/clutch\.co|designrush\.com|result__a|uddg=/i.test(html)) return html;
-  }
+    5000
+  );
+  if (ddg && !isEmptySearchPage(ddg)) return ddg;
   return null;
 }
 
@@ -490,22 +488,28 @@ async function searchQueries(
 ): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
   const firms: DiscoveredFirm[] = [];
   const lists: string[] = [];
-  for (const query of queries) {
+  const batches = await mapPool(queries, 3, async (query) => {
     const html = await fetchSearchHtml(query);
-    if (html) {
-      for (const item of extractSearchLinks(html)) {
-        const url = item.url;
-        const title = item.title;
-        if (isAgencyListPage(url) || isDirectoryHost(url)) {
-          if (!site || hostOf(url).includes(site) || keepAgencySites) lists.push(url);
-          continue;
-        }
-        if (site && !keepAgencySites && !hostOf(url).includes(site)) continue;
-        if (keepAgencySites && !isAgencySearchHit(title, url)) continue;
-        const firm = firmFrom(city, title, url, site ? viaForList(`https://${site}/`) : "web");
-        if (firm) firms.push(firm);
+    if (!html) return { firms: [] as DiscoveredFirm[], lists: [] as string[] };
+    const foundFirms: DiscoveredFirm[] = [];
+    const foundLists: string[] = [];
+    for (const item of extractSearchLinks(html)) {
+      const url = item.url;
+      const title = item.title;
+      if (isAgencyListPage(url) || isDirectoryHost(url)) {
+        if (!site || hostOf(url).includes(site) || keepAgencySites) foundLists.push(url);
+        continue;
       }
+      if (site && !keepAgencySites && !hostOf(url).includes(site)) continue;
+      if (keepAgencySites && !isAgencySearchHit(title, url)) continue;
+      const firm = firmFrom(city, title, url, site ? viaForList(`https://${site}/`) : "web");
+      if (firm) foundFirms.push(firm);
     }
+    return { firms: foundFirms, lists: foundLists };
+  });
+  for (const batch of batches) {
+    firms.push(...batch.firms);
+    lists.push(...batch.lists);
   }
   return { firms, lists };
 }

@@ -24,13 +24,28 @@ export async function GET(request: Request) {
   }
 
   const row: CityRow = { city, state, country };
-  const firms = await exploreCityStep(row, step, 200);
-  return NextResponse.json({
-    city,
-    state,
-    country,
-    step,
-    count: firms.length,
-    firms,
-  });
+  try {
+    const firms = await exploreCityStep(row, step, 200);
+    return NextResponse.json({
+      city,
+      state,
+      country,
+      step,
+      count: firms.length,
+      firms,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        city,
+        state,
+        country,
+        step,
+        count: 0,
+        firms: [],
+        error: error instanceof Error ? error.message : "Explore step failed",
+      },
+      { status: 500 }
+    );
+  }
 }

@@ -16,6 +16,27 @@ const STEPS = [
 type StepId = (typeof STEPS)[number]["id"];
 type StepState = "wait" | "run" | "done" | "empty";
 
+async function fetchJson<T>(url: string, timeoutMs: number): Promise<{ ok: boolean; data: T }> {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    const text = await response.text();
+    try {
+      return { ok: response.ok, data: JSON.parse(text) as T };
+    } catch {
+      throw new Error(response.ok ? "Bad response from server" : `Request failed (${response.status})`);
+    }
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("This step took too long and was stopped so you can keep going.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
 export function CityExplorePanel() {
   const [city, setCity] = useState("");
   const [country, setCountry] = useState<"us" | "gb">("us");
@@ -38,6 +59,7 @@ export function CityExplorePanel() {
   const [savedCount, setSavedCount] = useState(0);
   const [doneCity, setDoneCity] = useState("");
   const [doneCount, setDoneCount] = useState(0);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
 
   useEffect(() => {
     setSavedCount(loadAllResults().length);
@@ -53,6 +75,7 @@ export function CityExplorePanel() {
     setError("");
     setDoneCity("");
     setDoneCount(0);
+    setProgress({ done: 0, total: 0 });
     setRows([]);
     setRunning(true);
     setStepState({ google: "wait", clutch: "wait", designrush: "wait", directories: "wait" });
@@ -74,9 +97,11 @@ export function CityExplorePanel() {
           country: row.country,
           step: step.id,
         });
-        const response = await fetch(`/api/explore-city?${params.toString()}`);
-        const data = (await response.json()) as { firms?: DiscoveredFirm[]; error?: string };
-        if (!response.ok) throw new Error(data.error || `${step.label} failed`);
+        const { ok, data } = await fetchJson<{ firms?: DiscoveredFirm[]; error?: string }>(
+          `/api/explore-city?${params.toString()}`,
+          55000
+        );
+        if (!ok) throw new Error(data.error || `${step.label} failed`);
         const total = data.firms?.length ?? 0;
         let added = 0;
         for (const firm of data.firms ?? []) {
@@ -94,77 +119,106 @@ export function CityExplorePanel() {
 
     const firms = [...found.values()];
     const collected: CrawlResultRow[] = [];
-    if (firms.length === 0) {
-      collected.push({
-        city: row.city,
-        state: row.state,
-        country: row.country,
-        locationLabel: cityLabel(row),
-        company: "—",
-        website: "",
-        crawled: false,
-        careerPages: [],
-        pagesChecked: [],
-        jobOpen: false,
-        jobCount: 0,
-        jobs: [],
-        error: "No SEO firms found from Google, Clutch, DesignRush, or other directories",
-      });
-      setRows(collected);
-      setSavedCount(saveCityResults(collected).length);
-      finishCity(cityName, collected.length);
-      return;
-    }
+    try {
+      if (firms.length === 0) {
+        collected.push({
+          city: row.city,
+          state: row.state,
+          country: row.country,
+          locationLabel: cityLabel(row),
+          company: "—",
+          website: "",
+          crawled: false,
+          careerPages: [],
+          pagesChecked: [],
+          jobOpen: false,
+          jobCount: 0,
+          jobs: [],
+          error: "No SEO firms found from Google, Clutch, DesignRush, or other directories",
+        });
+        setRows(collected);
+        setSavedCount(saveCityResults(collected).length);
+        return;
+      }
 
-    for (let start = 0; start < firms.length; start += 4) {
-      const batch = firms.slice(start, start + 4);
-      setCurrent(`Checking jobs on ${batch.map((firm) => firm.website).join(", ")}`);
-      const scanned = await Promise.all(
-        batch.map(async (firm) => {
-          const siteParams = new URLSearchParams({
-            website: firm.website,
-            company: firm.name,
-            city: row.city,
-            country: row.country,
-          });
-          const siteRes = await fetch(`/api/scan-site?${siteParams.toString()}`);
-          const site = (await siteRes.json()) as {
-            jobs?: Job[];
-            careerPages?: string[];
-            pagesChecked?: string[];
-            error?: string;
-          };
-          const jobs = siteRes.ok ? site.jobs ?? [] : [];
-          const result: CrawlResultRow = {
-            city: row.city,
-            state: row.state,
-            country: row.country,
-            locationLabel: cityLabel(row),
-            company: firm.name,
-            website: firm.website,
-            address: firm.address,
-            mapsUrl: firm.mapsUrl,
-            foundVia: firm.foundVia,
-            crawled: siteRes.ok,
-            careerPages: site.careerPages ?? [],
-            pagesChecked: site.pagesChecked ?? [],
-            jobOpen: jobs.length > 0,
-            jobCount: jobs.length,
-            latestJobTitle: jobs[0]?.title,
-            latestJobUrl: jobs[0]?.url,
-            jobs,
-            error: siteRes.ok ? undefined : site.error || "Scan failed",
-          };
-          return result;
-        })
-      );
-      collected.push(...scanned);
-      setRows([...collected]);
-      setSavedCount(saveCityResults(collected).length);
+      setProgress({ done: 0, total: firms.length });
+      for (let start = 0; start < firms.length; start += 6) {
+        const batch = firms.slice(start, start + 6);
+        setCurrent(`Checking jobs ${start + 1}–${Math.min(start + batch.length, firms.length)} of ${firms.length}`);
+        const scanned = await Promise.all(
+          batch.map(async (firm) => {
+            const siteParams = new URLSearchParams({
+              website: firm.website,
+              company: firm.name,
+              city: row.city,
+              country: row.country,
+            });
+            try {
+              const { ok, data: site } = await fetchJson<{
+                jobs?: Job[];
+                careerPages?: string[];
+                pagesChecked?: string[];
+                error?: string;
+              }>(`/api/scan-site?${siteParams.toString()}`, 20000);
+              const jobs = ok ? site.jobs ?? [] : [];
+              return {
+                city: row.city,
+                state: row.state,
+                country: row.country,
+                locationLabel: cityLabel(row),
+                company: firm.name,
+                website: firm.website,
+                address: firm.address,
+                mapsUrl: firm.mapsUrl,
+                foundVia: firm.foundVia,
+                crawled: ok,
+                careerPages: site.careerPages ?? [],
+                pagesChecked: site.pagesChecked ?? [],
+                jobOpen: jobs.length > 0,
+                jobCount: jobs.length,
+                latestJobTitle: jobs[0]?.title,
+                latestJobUrl: jobs[0]?.url,
+                jobs,
+                error: ok ? undefined : site.error || "Scan failed",
+              } satisfies CrawlResultRow;
+            } catch (err) {
+              return {
+                city: row.city,
+                state: row.state,
+                country: row.country,
+                locationLabel: cityLabel(row),
+                company: firm.name,
+                website: firm.website,
+                address: firm.address,
+                mapsUrl: firm.mapsUrl,
+                foundVia: firm.foundVia,
+                crawled: false,
+                careerPages: [],
+                pagesChecked: [],
+                jobOpen: false,
+                jobCount: 0,
+                jobs: [],
+                error: err instanceof Error ? err.message : "Scan timed out",
+              } satisfies CrawlResultRow;
+            }
+          })
+        );
+        collected.push(...scanned);
+        setProgress({ done: collected.length, total: firms.length });
+        setRows([...collected]);
+        setSavedCount(saveCityResults(collected).length);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Explore failed");
+    } finally {
+      if (collected.length > 0) {
+        setSavedCount(saveCityResults(collected).length);
+        finishCity(cityName, collected.length);
+      } else {
+        setRunning(false);
+        setCurrent("");
+      }
     }
-
-    setSavedCount(saveCityResults(collected).length);
-    finishCity(cityName, collected.length);
   }
 
   function finishCity(cityName: string, count: number) {
@@ -230,7 +284,10 @@ export function CityExplorePanel() {
         >
           {running ? "Exploring city…" : "Explore this city"}
         </button>
-        <span className="text-sm text-[#93a4bb]">{current}</span>
+        <span className="text-sm text-[#93a4bb]">
+          {current}
+          {running && progress.total > 0 ? ` · ${progress.done}/${progress.total}` : ""}
+        </span>
       </div>
 
       <ol className="grid gap-2 sm:grid-cols-2">

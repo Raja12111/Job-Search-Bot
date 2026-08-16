@@ -1,37 +1,8 @@
 import type { DiscoveredFirm, Job, JobSource } from "@/lib/types";
 import { isSeoRole } from "@/lib/jobs";
-import { decodeHtml, fetchHtml, hostOf, USER_AGENT } from "@/lib/firm-web";
+import { decodeHtml, fetchHtml, USER_AGENT } from "@/lib/firm-web";
 
-const CAREER_PATHS = [
-  "/careers",
-  "/career",
-  "/careers/",
-  "/jobs",
-  "/jobs/",
-  "/job",
-  "/join",
-  "/join-us",
-  "/joinus",
-  "/join-our-team",
-  "/work-with-us",
-  "/work-at",
-  "/work",
-  "/opportunities",
-  "/open-roles",
-  "/open-positions",
-  "/openings",
-  "/vacancies",
-  "/hiring",
-  "/we-are-hiring",
-  "/were-hiring",
-  "/about",
-  "/about-us",
-  "/about/careers",
-  "/company/careers",
-  "/en/careers",
-  "/team",
-  "/our-team",
-];
+const CAREER_PATHS = ["/careers", "/jobs", "/join-us", "/join", "/work-with-us"];
 
 const CAREER_HINT =
   /career|jobs?|join[- ]us|join our team|we.?re hiring|open[- ]?(position|role|ing)|vacanc|opportunit|work with us|current opening|now hiring/i;
@@ -455,53 +426,6 @@ async function fromAts(source: JobSource, slug: string, company: string): Promis
   return [];
 }
 
-function decodeDdgUrl(href: string): string {
-  const raw = href.replace(/&amp;/g, "&");
-  const match = raw.match(/[?&]uddg=([^&]+)/i);
-  if (!match?.[1]) return raw;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return raw;
-  }
-}
-
-async function fromWebSearch(firm: DiscoveredFirm): Promise<Job[]> {
-  const host = hostOf(firm.website);
-  const queries = [
-    `site:${host} (careers OR jobs) (SEO OR "search engine")`,
-    `"${firm.name}" (SEO OR "search engine") (job OR hiring OR careers) ${firm.city}`,
-    `"${firm.name}" SEO applytojob OR greenhouse OR lever`,
-  ];
-  const jobs: Job[] = [];
-  await Promise.all(
-    queries.map(async (query) => {
-      const html = await fetchHtml(
-        `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
-        8000
-      );
-      if (!html) return;
-      for (const match of html.matchAll(
-        /<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi
-      )) {
-        const url = decodeDdgUrl(match[1] ?? "");
-        const title = decodeHtml(match[2] ?? "");
-        if (!url || !title) continue;
-        if (!isLikelyJobListing(title, url)) continue;
-        if (title.length < 6 || title.length > 120) continue;
-        jobs.push(
-          job("career-page", firm.name, title, url, {
-            location: firm.city,
-            description: `Found via web search for ${firm.name}`,
-            tags: ["web-search"],
-          })
-        );
-      }
-    })
-  );
-  return jobs;
-}
-
 function uniqueJobs(jobs: Job[]): Job[] {
   const seen = new Set<string>();
   const out: Job[] = [];
@@ -515,18 +439,26 @@ function uniqueJobs(jobs: Job[]): Job[] {
   return out;
 }
 
+function pickSeoJobs(jobs: Job[]): Job[] {
+  return uniqueJobs(jobs).filter((item) => {
+    if (!item.url || !within30Days(item.postedAt) || !isSeoRole(item)) return false;
+    if (["greenhouse", "lever", "ashby", "workable"].includes(item.source)) return true;
+    return isLikelyJobListing(item.title, item.url);
+  });
+}
+
 export async function crawlFirmCareers(firm: DiscoveredFirm): Promise<{
   pagesChecked: string[];
   careerPages: string[];
   jobs: Job[];
 }> {
   const origin = new URL(firm.website).origin;
-  const seed = [origin, ...CAREER_PATHS.map((path) => `${origin}${path}`)];
   const homepage = await fetchPage(origin);
   const extra = homepage ? findCareerLinks(homepage) : [];
-  const toFetch = [...new Set([...seed, ...extra])].slice(0, 14);
+  const guessed = CAREER_PATHS.map((path) => `${origin}${path}`);
+  const toFetch = [...new Set([...extra, ...guessed])].slice(0, 5);
 
-  const pages = (await Promise.all(toFetch.map((url) => fetchPage(url)))).filter(
+  const pages = [homepage, ...(await Promise.all(toFetch.map((url) => fetchPage(url))))].filter(
     (page): page is Page => Boolean(page)
   );
   const pagesChecked = pages.map((page) => page.url);
@@ -545,24 +477,18 @@ export async function crawlFirmCareers(firm: DiscoveredFirm): Promise<{
       const key = `${ats.source}:${ats.slug}`;
       if (atsSeen.has(key)) continue;
       atsSeen.add(key);
-      jobs.push(...(await fromAts(ats.source, ats.slug, firm.name)));
+      try {
+        jobs.push(...(await fromAts(ats.source, ats.slug, firm.name)));
+      } catch {
+        // skip a blocked ATS board
+      }
     }
   }
 
-  jobs.push(...(await fromWordpress(origin, firm.name)));
-
-  const unique = uniqueJobs(jobs);
-  let seoJobs = unique.filter((item) => {
-    if (!item.url || !within30Days(item.postedAt) || !isSeoRole(item)) return false;
-    if (["greenhouse", "lever", "ashby", "workable"].includes(item.source)) return true;
-    return isLikelyJobListing(item.title, item.url);
-  });
-
+  let seoJobs = pickSeoJobs(jobs);
   if (seoJobs.length === 0) {
-    const webJobs = await fromWebSearch(firm);
-    seoJobs = uniqueJobs([...unique, ...webJobs]).filter(
-      (item) => within30Days(item.postedAt) && item.url && isSeoRole(item)
-    );
+    jobs.push(...(await fromWordpress(origin, firm.name)));
+    seoJobs = pickSeoJobs(jobs);
   }
 
   return {

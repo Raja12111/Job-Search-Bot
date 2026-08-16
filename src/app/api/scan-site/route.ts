@@ -31,15 +31,29 @@ export async function GET(request: Request) {
     country,
   };
 
-  const crawled = await crawlFirmCareers(firm);
-  return NextResponse.json({
-    company: firm.name,
-    website: firm.website,
-    city,
-    country,
-    pagesChecked: crawled.pagesChecked,
-    careerPages: crawled.careerPages,
-    found: crawled.jobs.length,
-    jobs: crawled.jobs,
-  });
+  try {
+    const crawled = await crawlFirmCareers(firm);
+    return NextResponse.json({
+      company: firm.name,
+      website: firm.website,
+      city,
+      country,
+      pagesChecked: crawled.pagesChecked,
+      careerPages: crawled.careerPages,
+      found: crawled.jobs.length,
+      jobs: crawled.jobs,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      company: firm.name,
+      website: firm.website,
+      city,
+      country,
+      pagesChecked: [],
+      careerPages: [],
+      found: 0,
+      jobs: [],
+      error: error instanceof Error ? error.message : "Scan failed",
+    });
+  }
 }
