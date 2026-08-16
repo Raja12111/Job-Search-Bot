@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { cityLabel } from "@/lib/cities";
-import { saveResults } from "@/lib/results-store";
+import { loadAllResults, saveCityResults } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
 
 const STEPS = [
@@ -18,7 +17,6 @@ type StepId = (typeof STEPS)[number]["id"];
 type StepState = "wait" | "run" | "done" | "empty";
 
 export function CityExplorePanel() {
-  const router = useRouter();
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [country, setCountry] = useState<"us" | "gb">("us");
@@ -38,6 +36,11 @@ export function CityExplorePanel() {
     directories: { found: 0, added: 0 },
   });
   const [rows, setRows] = useState<CrawlResultRow[]>([]);
+  const [savedCount, setSavedCount] = useState(0);
+
+  useEffect(() => {
+    setSavedCount(loadAllResults().length);
+  }, []);
 
   async function startExplore() {
     const cityName = city.trim();
@@ -105,10 +108,9 @@ export function CityExplorePanel() {
         error: "No SEO firms found from Google, Clutch, DesignRush, or other directories",
       });
       setRows(collected);
-      saveResults(collected);
+      setSavedCount(saveCityResults(collected).length);
       setRunning(false);
-      setCurrent("");
-      router.push("/results");
+      setCurrent("Saved. Enter the next city when you are ready.");
       return;
     }
 
@@ -156,13 +158,12 @@ export function CityExplorePanel() {
       );
       collected.push(...scanned);
       setRows([...collected]);
-      saveResults(collected);
+      setSavedCount(saveCityResults(collected).length);
     }
 
-    saveResults(collected);
+    setSavedCount(saveCityResults(collected).length);
     setRunning(false);
-    setCurrent("");
-    router.push("/results");
+    setCurrent("Saved. Enter the next city when you are ready.");
   }
 
   return (
@@ -173,7 +174,8 @@ export function CityExplorePanel() {
           Give one city. The bot searches Google for SEO firms, then Clutch,
           DesignRush, and other local directories. The same agency often
           appears on more than one list, so we crawl each website only once.
-          Then it checks job openings.
+          Each city is saved. Use Saved results to review any city and filter
+          to job openings only.
         </p>
       </div>
 
@@ -220,12 +222,12 @@ export function CityExplorePanel() {
           {running ? "Exploring city…" : "Explore this city"}
         </button>
         <span className="text-sm text-[#93a4bb]">{current}</span>
-        {rows.length > 0 && (
+        {savedCount > 0 && (
           <Link
             href="/results"
             className="rounded-xl border border-[#3ee0a2] px-4 py-2 text-sm font-semibold text-[#3ee0a2]"
           >
-            View results
+            Saved results ({savedCount})
           </Link>
         )}
       </div>

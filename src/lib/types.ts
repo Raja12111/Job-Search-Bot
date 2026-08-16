@@ -89,6 +89,7 @@ export type CrawlResultRow = {
   latestJobUrl?: string;
   jobs: Job[];
   error?: string;
+  scannedAt?: string;
 };
 
 export type SearchResult = {

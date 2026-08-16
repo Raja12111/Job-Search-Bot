@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { CityExplorePanel } from "@/components/CityExplorePanel";
 import { CityScanPanel } from "@/components/CityScanPanel";
 import { JobSearchApp } from "@/components/JobSearchApp";
@@ -20,6 +21,12 @@ export function AppHome() {
         <TabButton active={tab === "search"} onClick={() => setTab("search")}>
           Quick SEO search
         </TabButton>
+        <Link
+          href="/results"
+          className="rounded-full border border-[#3ee0a2] px-4 py-2 text-sm font-medium text-[#3ee0a2]"
+        >
+          Saved results
+        </Link>
       </div>
       {tab === "explore" ? <CityExplorePanel /> : tab === "cities" ? <CityScanPanel /> : <JobSearchApp />}
     </div>

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { cityLabel, parseCityTable } from "@/lib/cities";
-import { saveResults } from "@/lib/results-store";
+import { saveCityResults } from "@/lib/results-store";
 import type { CityRow, CrawlResultRow, DiscoveredFirm, Job } from "@/lib/types";
 
 export function CityScanPanel() {
@@ -94,7 +94,7 @@ export function CityScanPanel() {
             error: "No SEO firms found in this city",
           });
           setRows([...collected]);
-          saveResults(collected);
+          saveCityResults(collected);
           continue;
         }
 
@@ -143,14 +143,14 @@ export function CityScanPanel() {
           );
           collected.push(...scanned);
           setRows([...collected]);
-          saveResults(collected);
+          saveCityResults(collected);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Scan failed");
       }
     }
 
-    saveResults(collected);
+    saveCityResults(collected);
     setRunning(false);
     setCurrent("");
     if (collected.length > 0) router.push("/results");
