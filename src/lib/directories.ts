@@ -307,10 +307,133 @@ async function searchBing(city: CityRow): Promise<{ firms: DiscoveredFirm[]; lis
 }
 
 export async function searchDirectories(city: CityRow): Promise<DiscoveredFirm[]> {
+  const [google, clutch, designrush, other] = await Promise.all([
+    searchGoogleSource(city),
+    searchClutchSource(city),
+    searchDesignRushSource(city),
+    searchOtherDirectorySource(city),
+  ]);
+  return [...google, ...clutch, ...designrush, ...other];
+}
+
+export async function searchGoogleSource(city: CityRow): Promise<DiscoveredFirm[]> {
   const [ddg, bing] = await Promise.all([searchDuckDuckGo(city), searchBing(city)]);
-  const listUrls = [...new Set([...knownListUrls(city), ...ddg.lists, ...bing.lists])].slice(0, 18);
-  const fromLists = await mapPool(listUrls, 6, (url) => firmsFromListPage(city, url, viaForList(url)));
-  return [...fromLists.flat(), ...ddg.firms, ...bing.firms];
+  const listUrls = [...new Set([...ddg.lists, ...bing.lists])]
+    .filter((url) => !/clutch\.co|designrush\.com/.test(url))
+    .slice(0, 12);
+  const fromLists = await mapPool(listUrls, 5, (url) => firmsFromListPage(city, url, viaForList(url)));
+  return [...ddg.firms, ...bing.firms, ...fromLists.flat()];
+}
+
+export async function searchClutchSource(city: CityRow): Promise<DiscoveredFirm[]> {
+  const citySlug = slug(city.city);
+  const urls = [
+    `https://clutch.co/seo-firms/${citySlug}`,
+    `https://clutch.co/agencies/seo?geoloc=true&location=${encodeURIComponent(cityLabel(city))}`,
+    `https://clutch.co/${citySlug}/seo`,
+  ];
+  const siteSearch = await searchSiteQuery(city, "clutch.co");
+  const pages = await mapPool(
+    [...new Set([...urls, ...siteSearch.lists])].slice(0, 10),
+    4,
+    (url) => firmsFromListPage(city, url, "clutch")
+  );
+  const recovered = await recoverProfileNames(city, siteSearch.lists, "clutch");
+  return [...pages.flat(), ...siteSearch.firms, ...recovered];
+}
+
+export async function searchDesignRushSource(city: CityRow): Promise<DiscoveredFirm[]> {
+  const citySlug = slug(city.city);
+  const stateSlug = slug(stateName(city) || city.city);
+  const urls = [
+    `https://www.designrush.com/agency/search-engine-optimization/${stateSlug}/${citySlug}`,
+    `https://www.designrush.com/agency/search-engine-optimization/${citySlug}`,
+    `https://www.designrush.com/agency/search?q=${encodeURIComponent(`SEO ${cityLabel(city)}`)}`,
+  ];
+  const siteSearch = await searchSiteQuery(city, "designrush.com");
+  const pages = await mapPool(
+    [...new Set([...urls, ...siteSearch.lists])].slice(0, 10),
+    4,
+    (url) => firmsFromListPage(city, url, "designrush")
+  );
+  const recovered = await recoverProfileNames(city, siteSearch.lists, "designrush");
+  return [...pages.flat(), ...siteSearch.firms, ...recovered];
+}
+
+export async function searchOtherDirectorySource(city: CityRow): Promise<DiscoveredFirm[]> {
+  const urls = knownListUrls(city).filter(
+    (url) => !/clutch\.co|designrush\.com/.test(url)
+  );
+  const extraQueries = await Promise.all([
+    searchSiteQuery(city, "sortlist.com"),
+    searchSiteQuery(city, "goodfirms.co"),
+    searchSiteQuery(city, "expertise.com"),
+    searchSiteQuery(city, "topdevelopers.co"),
+  ]);
+  const lists = [...urls, ...extraQueries.flatMap((item) => item.lists)].slice(0, 14);
+  const pages = await mapPool(lists, 5, (url) => firmsFromListPage(city, url, viaForList(url)));
+  return [...pages.flat(), ...extraQueries.flatMap((item) => item.firms)];
+}
+
+async function searchSiteQuery(
+  city: CityRow,
+  site: string
+): Promise<{ firms: DiscoveredFirm[]; lists: string[] }> {
+  const query = `site:${site} SEO agencies ${cityLabel(city)}`;
+  const html = await fetchHtml(
+    `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+    10000
+  );
+  const firms: DiscoveredFirm[] = [];
+  const lists: string[] = [];
+  if (!html) return { firms, lists };
+  for (const match of html.matchAll(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+    const url = decodeDdgUrl(match[1] ?? "");
+    const title = decodeHtml(match[2] ?? "");
+    if (!url) continue;
+    if (isAgencyListPage(url) || isDirectoryHost(url)) {
+      lists.push(url);
+      continue;
+    }
+    const firm = firmFrom(city, title, url, viaForList(url));
+    if (firm) firms.push(firm);
+  }
+  return { firms, lists };
+}
+
+async function recoverProfileNames(
+  city: CityRow,
+  urls: string[],
+  foundVia: string
+): Promise<DiscoveredFirm[]> {
+  const names = [...new Set(urls.map(nameFromProfileUrl).filter(Boolean))].slice(0, 8);
+  const batches = await mapPool(names, 4, async (name) => {
+    const html = await fetchHtml(
+      `https://html.duckduckgo.com/html/?q=${encodeURIComponent(`"${name}" SEO agency ${city.city} official website`)}`,
+      8000
+    );
+    if (!html) return [] as DiscoveredFirm[];
+    const out: DiscoveredFirm[] = [];
+    for (const match of html.matchAll(/<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/gi)) {
+      const url = decodeDdgUrl(match[1] ?? "");
+      const title = decodeHtml(match[2] ?? "");
+      if (!url || isDirectoryHost(url) || isAgencyListPage(url)) continue;
+      const firm = firmFrom(city, title || name, url, foundVia);
+      if (firm) out.push(firm);
+    }
+    return out.slice(0, 2);
+  });
+  return batches.flat();
+}
+
+function nameFromProfileUrl(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const match = path.match(/\/(?:profile|agency\/profile|agency)\/([a-z0-9-]+)/i);
+    return (match?.[1] ?? "").replace(/-/g, " ").trim();
+  } catch {
+    return "";
+  }
 }
 
 export function directoryProfileUrls(url: string): boolean {

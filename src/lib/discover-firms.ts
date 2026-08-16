@@ -3,7 +3,11 @@ import { cityLabel } from "@/lib/cities";
 import {
   directoryProfileUrls,
   firmsFromDirectoryProfiles,
+  searchClutchSource,
+  searchDesignRushSource,
   searchDirectories,
+  searchGoogleSource,
+  searchOtherDirectorySource,
 } from "@/lib/directories";
 import { cleanWebsite, isDirectoryHost, nameFromHost } from "@/lib/firm-web";
 
@@ -276,6 +280,39 @@ function interleaveBySource(firms: DiscoveredFirm[], limit: number): DiscoveredF
     }
   }
   return out;
+}
+
+export type ExploreStep = "google" | "clutch" | "designrush" | "directories";
+
+export async function exploreCityStep(
+  city: CityRow,
+  step: ExploreStep,
+  limit = 80
+): Promise<DiscoveredFirm[]> {
+  const byWebsite = new Map<string, DiscoveredFirm>();
+  if (step === "google") {
+    const [maps, places, web, google] = await Promise.all([
+      searchSerperMaps(city),
+      searchGooglePlaces(city),
+      searchSerperWeb(city),
+      searchGoogleSource(city),
+    ]);
+    for (const firm of maps) addFirm(byWebsite, firm);
+    for (const firm of places) addFirm(byWebsite, firm);
+    for (const firm of web.firms) addFirm(byWebsite, { ...firm, foundVia: firm.foundVia || "google" });
+    for (const firm of google) addFirm(byWebsite, { ...firm, foundVia: firm.foundVia || "google" });
+    if (web.profiles.length > 0) {
+      const extra = await firmsFromDirectoryProfiles(city, web.profiles);
+      for (const firm of extra) addFirm(byWebsite, firm);
+    }
+  } else if (step === "clutch") {
+    for (const firm of await searchClutchSource(city)) addFirm(byWebsite, firm);
+  } else if (step === "designrush") {
+    for (const firm of await searchDesignRushSource(city)) addFirm(byWebsite, firm);
+  } else {
+    for (const firm of await searchOtherDirectorySource(city)) addFirm(byWebsite, firm);
+  }
+  return [...byWebsite.values()].slice(0, limit);
 }
 
 export function mapsSearchConfigured(): boolean {

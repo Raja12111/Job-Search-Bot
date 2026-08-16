@@ -1,23 +1,27 @@
 "use client";
 
 import { useState } from "react";
+import { CityExplorePanel } from "@/components/CityExplorePanel";
 import { CityScanPanel } from "@/components/CityScanPanel";
 import { JobSearchApp } from "@/components/JobSearchApp";
 
 export function AppHome() {
-  const [tab, setTab] = useState<"search" | "cities">("cities");
+  const [tab, setTab] = useState<"explore" | "cities" | "search">("explore");
 
   return (
     <div className="mx-auto min-h-screen max-w-6xl px-5 py-8">
-      <div className="mb-6 flex gap-2">
+      <div className="mb-6 flex flex-wrap gap-2">
+        <TabButton active={tab === "explore"} onClick={() => setTab("explore")}>
+          City explorer
+        </TabButton>
         <TabButton active={tab === "cities"} onClick={() => setTab("cities")}>
-          City firm scan
+          Multi-city scan
         </TabButton>
         <TabButton active={tab === "search"} onClick={() => setTab("search")}>
           Quick SEO search
         </TabButton>
       </div>
-      {tab === "cities" ? <CityScanPanel /> : <JobSearchApp />}
+      {tab === "explore" ? <CityExplorePanel /> : tab === "cities" ? <CityScanPanel /> : <JobSearchApp />}
     </div>
   );
 }
